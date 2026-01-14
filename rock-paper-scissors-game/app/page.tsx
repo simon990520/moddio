@@ -50,7 +50,8 @@ export default function Home() {
     const [opponentChoice, setOpponentChoice] = useState<Choice | null>(null);
     const [roundWinner, setRoundWinner] = useState<'player' | 'opponent' | 'tie' | null>(null);
     const [gameWinner, setGameWinner] = useState<'player' | 'opponent' | null>(null);
-    const [choiceMade, setChoiceMade] = useState<boolean>(false);
+    const [choiceMade, setChoiceMade] = useState(false);
+    const [opponentImageUrl, setOpponentImageUrl] = useState<string | null>(null);
     const [showCollision, setShowCollision] = useState<boolean>(false);
 
     // Rematch states
@@ -192,13 +193,18 @@ export default function Home() {
                 setGameState('waiting');
             });
 
-            socketIo.on('matchFound', () => {
+            socketIo.on('matchFound', (data: { opponentImageUrl?: string }) => {
                 setGameState('countdown');
                 setPlayerScore(0);
                 setOpponentScore(0);
                 setRound(1);
                 setRematchRequested(false);
                 setRematchStatus('');
+                if (data?.opponentImageUrl) {
+                    setOpponentImageUrl(data.opponentImageUrl);
+                } else {
+                    setOpponentImageUrl(null);
+                }
             });
 
             socketIo.on('countdown', (count: number) => {
@@ -331,7 +337,7 @@ export default function Home() {
         }
 
         console.log('[GAME_ACTION] Emitting findMatch...');
-        socket.emit('findMatch');
+        socket.emit('findMatch', { imageUrl: user?.imageUrl });
     };
 
     const handleChoice = (choice: Choice) => {
@@ -374,6 +380,7 @@ export default function Home() {
         setRoundWinner(null);
         setGameWinner(null);
         setChoiceMade(false);
+        setOpponentImageUrl(null);
         setRematchRequested(false);
         setRematchStatus('');
     };
@@ -473,11 +480,11 @@ export default function Home() {
 
 
 
-            <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
-                ? 'victory-reward' : ''
-                } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
-                    ? 'shake' : ''
-                }`}>
+            <div className={`game-container 
+                ${((gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')) ? 'victory-reward' : ''}
+                ${((gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')) ? 'defeat-glow' : ''}
+                ${(gameState === 'roundResult' && showCollision) ? 'shake' : ''}
+                `}>
 
                 {/* Integrated Vertical Score Bars */}
                 {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'countdown' || gameState === 'gameOver') && (
@@ -496,7 +503,9 @@ export default function Home() {
                             <div className="score-track">
                                 <div className="score-fill fill-right" style={{ height: `${(opponentScore / 3) * 100}%` }}></div>
                             </div>
-                            <div className="score-avatar" style={{ fontSize: '1.5rem' }}>🤖</div>
+                            <div className="score-avatar">
+                                {opponentImageUrl ? <img src={opponentImageUrl} className="avatar-img" alt="Opponent" /> : <span style={{ fontSize: '1.5rem' }}>🤖</span>}
+                            </div>
                         </div>
                     </>
                 )}
@@ -597,46 +606,35 @@ export default function Home() {
 
                     {gameState === 'gameOver' && (
                         <div style={{ textAlign: 'center' }}>
-                            <h1 className="game-title" style={{ marginBottom: '30px' }}>
-                                {gameWinner === 'player' ? '🏆 VICTORY!' : '💔 DEFEAT'}
-                            </h1>
-                            <div style={{ fontSize: '2rem', marginBottom: '30px' }}>
-                                Final Score: {playerScore} - {opponentScore}
-                            </div>
-
-                            {/* Rematch System */}
-                            {/* Rematch System */}
-                            {rematchStatus === 'Opponent wants a rematch!' ? (
-                                <div className="rematch-container">
-                                    <div className="rematch-status">{rematchStatus}</div>
-                                    <div className="rematch-buttons">
-                                        <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
-                                            ✓ Accept Rematch
+                            {/* Intuitive and simplified GameOver screen */}
+                            <div style={{ marginTop: '20vh' }}>
+                                {/* Rematch System */}
+                                <div className="rematch-card">
+                                    <p style={{ marginBottom: '25px', fontSize: '1.1rem', opacity: 0.9 }}>
+                                        Play this opponent again?
+                                    </p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        <button className="btn-primary" onClick={handleRequestRematch} disabled={rematchRequested}>
+                                            {rematchRequested ? 'WAITING...' : '🔄 REQUEST REMATCH'}
                                         </button>
-                                        <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
-                                            🏠 Find New Match
+                                        <button className="btn-secondary" onClick={handlePlayAgain}>
+                                            🏠 FIND NEW MATCH
                                         </button>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="rematch-container">
-                                    {rematchRequested ? (
-                                        <div className="rematch-status">Waiting for opponent response...</div>
-                                    ) : (
-                                        <>
-                                            <div className="rematch-message">Play this opponent again?</div>
-                                            <div className="rematch-buttons">
-                                                <button className="btn-small accept" onClick={handleRequestRematch}>
-                                                    🔁 Request Rematch
-                                                </button>
-                                                <button className="btn-small" onClick={handlePlayAgain}>
-                                                    🏠 Find New Match
-                                                </button>
-                                            </div>
-                                        </>
+
+                                    {rematchStatus && (
+                                        <div className="rematch-status" style={{ marginTop: '20px', color: 'var(--primary)', fontWeight: 600 }}>
+                                            {rematchStatus}
+                                            {rematchStatus.includes('wants a rematch') && (
+                                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px' }}>
+                                                    <button className="btn-primary" onClick={() => handleRematchResponse(true)} style={{ padding: '8px 20px', fontSize: '0.9rem' }}>Accept</button>
+                                                    <button className="btn-secondary" onClick={() => handleRematchResponse(false)} style={{ padding: '8px 20px', fontSize: '0.9rem' }}>Decline</button>
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     )}
                 </div>

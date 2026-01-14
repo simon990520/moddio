@@ -54,17 +54,36 @@ body {
   animation: victoryGlow 1.5s ease-in-out infinite alternate;
 }
 
+.defeat-glow {
+  animation: defeatGlow 1.5s ease-in-out infinite alternate;
+}
+
 .shake {
-  animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+  animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+  animation-iteration-count: 2;
 }
 
 @keyframes victoryGlow {
   from {
-    box-shadow: 0 0 20px rgba(75, 255, 124, 0.3), inset 0 0 20px rgba(75, 255, 124, 0.1);
+    box-shadow: 0 0 20px rgba(75, 255, 124, 0.4), inset 0 0 20px rgba(75, 255, 124, 0.2);
+    border: 2px solid rgba(75, 255, 124, 0.5);
   }
 
   to {
-    box-shadow: 0 0 50px rgba(75, 255, 124, 0.6), inset 0 0 40px rgba(75, 255, 124, 0.3);
+    box-shadow: 0 0 60px rgba(75, 255, 124, 0.7), inset 0 0 40px rgba(75, 255, 124, 0.4);
+    border: 2px solid rgba(75, 255, 124, 0.8);
+  }
+}
+
+@keyframes defeatGlow {
+  from {
+    box-shadow: 0 0 20px rgba(255, 59, 79, 0.4), inset 0 0 20px rgba(255, 59, 79, 0.2);
+    border: 2px solid rgba(255, 59, 79, 0.5);
+  }
+
+  to {
+    box-shadow: 0 0 60px rgba(255, 59, 79, 0.7), inset 0 0 40px rgba(255, 59, 79, 0.4);
+    border: 2px solid rgba(255, 59, 79, 0.8);
   }
 }
 
@@ -1068,4 +1087,36 @@ body {
   color: white;
   transform: rotate(90deg) scale(1.1);
   box-shadow: 0 0 15px rgba(255, 50, 50, 0.4);
+}
+
+/* Rematch Card Simplification */
+.rematch-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 35px;
+  border-radius: 30px;
+  width: 90%;
+  max-width: 320px;
+  margin: 0 auto;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.btn-secondary {
+  padding: 15px 40px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
 }

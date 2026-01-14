@@ -26,11 +26,12 @@ const activeRooms = new Map();
 const userSockets = new Map(); // userId -> socketId (Enforce single session)
 
 // Helper functions
-function createPlayer(socketId, userId) {
+function createPlayer(socketId, userId, imageUrl) {
     return {
         id: crypto.randomUUID(),
         userId,
         socketId,
+        imageUrl,
         score: 0,
         choice: null,
         ready: true
@@ -145,8 +146,10 @@ app.prepare().then(() => {
             }
         });
 
-        socket.on('findMatch', () => {
-            console.log('[SERVER_GAME] findMatch received from:', socket.id, 'User:', userId);
+        socket.on('findMatch', (data) => {
+            const userId = socket.userId;
+            const imageUrl = data?.imageUrl;
+            console.log('[SERVER_GAME] findMatch request from:', userId, 'with image:', !!imageUrl);
 
             // Check if player is already waiting
             if (waitingPlayers.some(p => p.socketId === socket.id || p.userId === userId)) {
@@ -168,7 +171,7 @@ app.prepare().then(() => {
                 }
             }
 
-            const player = createPlayer(socket.id, userId);
+            const player = createPlayer(socket.id, userId, imageUrl);
             console.log('[SERVER_GAME] Created player object for:', userId);
 
             // If someone is waiting, match them
@@ -190,13 +193,15 @@ app.prepare().then(() => {
                 socket.emit('matchFound', {
                     roomId: room.id,
                     playerIndex: 0,
-                    opponentId: opponent.id
+                    opponentId: opponent.id,
+                    opponentImageUrl: opponent.imageUrl
                 });
 
                 io.to(opponent.socketId).emit('matchFound', {
                     roomId: room.id,
                     playerIndex: 1,
-                    opponentId: player.id
+                    opponentId: player.id,
+                    opponentImageUrl: player.imageUrl
                 });
 
                 // Start countdown after 1 second
