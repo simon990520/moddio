@@ -33,7 +33,9 @@ function createRoom(player1, player2) {
         round: 1,
         state: 'countdown',
         countdown: 3,
-        winner: null
+        winner: null,
+        rematchRequested: false,
+        rematchRequestedBy: null
     };
 }
 
@@ -131,6 +133,63 @@ app.prepare().then(() => {
             // Check if both players made their choice
             if (room.players[0].choice && room.players[1].choice) {
                 resolveRound(room);
+            }
+        });
+
+        socket.on('requestRematch', () => {
+            const room = activeRooms.get(socket.id);
+            if (!room || room.state !== 'gameOver') return;
+
+            room.rematchRequested = true;
+            room.rematchRequestedBy = socket.id;
+
+            // Notify opponent
+            const opponentSocket = room.players.find(p => p.socketId !== socket.id)?.socketId;
+            if (opponentSocket) {
+                io.to(opponentSocket).emit('rematchRequested');
+            }
+        });
+
+        socket.on('rematchResponse', (accepted) => {
+            const room = activeRooms.get(socket.id);
+            if (!room || !room.rematchRequested) return;
+
+            const requesterSocket = room.rematchRequestedBy;
+            const opponentSocket = room.players.find(p => p.socketId !== socket.id)?.socketId;
+
+            if (accepted && requesterSocket && opponentSocket) {
+                // Notify both players
+                io.to(requesterSocket).emit('rematchAccepted');
+                io.to(opponentSocket).emit('rematchAccepted');
+
+                // Reset room state
+                setTimeout(() => {
+                    room.players[0].score = 0;
+                    room.players[1].score = 0;
+                    room.players[0].choice = null;
+                    room.players[1].choice = null;
+                    room.round = 1;
+                    room.state = 'countdown';
+                    room.winner = null;
+                    room.rematchRequested = false;
+                    room.rematchRequestedBy = null;
+
+                    startCountdown(room.id);
+                }, 2000);
+            } else {
+                // Notify requester
+                if (requesterSocket) {
+                    io.to(requesterSocket).emit('rematchDeclined');
+                }
+                if (opponentSocket) {
+                    io.to(opponentSocket).emit('rematchDeclined');
+                }
+
+                // Clean up room
+                setTimeout(() => {
+                    activeRooms.delete(room.players[0].socketId);
+                    activeRooms.delete(room.players[1].socketId);
+                }, 2000);
             }
         });
 
@@ -249,9 +308,8 @@ app.prepare().then(() => {
             }
         });
 
-        // Clean up
-        activeRooms.delete(player1.socketId);
-        activeRooms.delete(player2.socketId);
+        // Don't clean up room immediately - keep it for rematch
+        // Room will be cleaned up if rematch is declined or on disconnect
     }
 
     httpServer

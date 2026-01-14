@@ -22,6 +22,11 @@ export default function Home() {
     const [roundWinner, setRoundWinner] = useState<'player' | 'opponent' | 'tie' | null>(null);
     const [gameWinner, setGameWinner] = useState<'player' | 'opponent' | null>(null);
     const [choiceMade, setChoiceMade] = useState<boolean>(false);
+    const [showCollision, setShowCollision] = useState<boolean>(false);
+
+    // Rematch states
+    const [rematchRequested, setRematchRequested] = useState<boolean>(false);
+    const [rematchStatus, setRematchStatus] = useState<string>('');
 
     useEffect(() => {
         const socketIo = io('http://localhost:3000');
@@ -36,6 +41,8 @@ export default function Home() {
             setPlayerScore(0);
             setOpponentScore(0);
             setRound(1);
+            setRematchRequested(false);
+            setRematchStatus('');
         });
 
         socketIo.on('countdown', (count: number) => {
@@ -50,6 +57,7 @@ export default function Home() {
             setPlayerChoice(null);
             setOpponentChoice(null);
             setRoundWinner(null);
+            setShowCollision(false);
         });
 
         socketIo.on('roundResult', (result: RoundResult) => {
@@ -59,6 +67,10 @@ export default function Home() {
             setPlayerScore(result.playerScore);
             setOpponentScore(result.opponentScore);
             setGameState('roundResult');
+
+            // Trigger collision animation
+            setShowCollision(true);
+            setTimeout(() => setShowCollision(false), 600);
         });
 
         socketIo.on('gameOver', (data: GameOverData) => {
@@ -66,9 +78,39 @@ export default function Home() {
             setGameState('gameOver');
         });
 
+        socketIo.on('rematchRequested', () => {
+            setRematchStatus('Opponent wants a rematch!');
+        });
+
+        socketIo.on('rematchAccepted', () => {
+            setRematchStatus('Rematch accepted! Starting new game...');
+            setTimeout(() => {
+                setGameState('countdown');
+                setPlayerScore(0);
+                setOpponentScore(0);
+                setRound(1);
+                setPlayerChoice(null);
+                setOpponentChoice(null);
+                setRoundWinner(null);
+                setGameWinner(null);
+                setChoiceMade(false);
+                setRematchRequested(false);
+                setRematchStatus('');
+            }, 2000);
+        });
+
+        socketIo.on('rematchDeclined', () => {
+            setRematchStatus('Opponent declined the rematch');
+            setTimeout(() => {
+                setGameState('lobby');
+            }, 2000);
+        });
+
         socketIo.on('opponentDisconnected', () => {
             alert('Opponent disconnected!');
             setGameState('lobby');
+            setRematchRequested(false);
+            setRematchStatus('');
         });
 
         return () => {
@@ -90,6 +132,28 @@ export default function Home() {
         }
     };
 
+    const handleRequestRematch = () => {
+        if (socket) {
+            socket.emit('requestRematch');
+            setRematchRequested(true);
+            setRematchStatus('Waiting for opponent response...');
+        }
+    };
+
+    const handleRematchResponse = (accepted: boolean) => {
+        if (socket) {
+            socket.emit('rematchResponse', accepted);
+            if (accepted) {
+                setRematchStatus('Rematch accepted! Starting new game...');
+            } else {
+                setRematchStatus('You declined the rematch');
+                setTimeout(() => {
+                    setGameState('lobby');
+                }, 2000);
+            }
+        }
+    };
+
     const handlePlayAgain = () => {
         setGameState('lobby');
         setPlayerScore(0);
@@ -100,6 +164,8 @@ export default function Home() {
         setRoundWinner(null);
         setGameWinner(null);
         setChoiceMade(false);
+        setRematchRequested(false);
+        setRematchStatus('');
     };
 
     return (
@@ -123,19 +189,19 @@ export default function Home() {
                 </div>
 
                 {/* Score icons */}
-                <div className="score-icon top left" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                <div className="score-icon bottom left" style={{ color: 'var(--score-red)' }}>🔴</div>
-                <div className="score-icon top right" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                <div className="score-icon bottom right" style={{ color: 'var(--score-orange)' }}>🟠</div>
+                <div className="score-icon top-left" style={{ color: 'var(--score-blue)' }}>🔵</div>
+                <div className="score-icon bottom-left" style={{ color: 'var(--score-red)' }}>🔴</div>
+                <div className="score-icon top-right" style={{ color: 'var(--score-blue)' }}>🔵</div>
+                <div className="score-icon bottom-right" style={{ color: 'var(--score-orange)' }}>🟠</div>
             </div>
 
-            {/* Hands visual */}
+            {/* Hands visual with collision animation */}
             {(gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult') && (
                 <div className="hands-container">
-                    <div className="hand top">
+                    <div className={`hand top ${showCollision ? 'collide-top' : ''}`}>
                         {gameState === 'roundResult' && opponentChoice ? CHOICE_EMOJIS[opponentChoice] : '✊'}
                     </div>
-                    <div className="hand">
+                    <div className={`hand bottom ${showCollision ? 'collide-bottom' : ''}`}>
                         {gameState === 'roundResult' && playerChoice ? CHOICE_EMOJIS[playerChoice] : '✊'}
                     </div>
                 </div>
@@ -207,9 +273,41 @@ export default function Home() {
                         <div style={{ fontSize: '2rem', marginBottom: '30px' }}>
                             Final Score: {playerScore} - {opponentScore}
                         </div>
-                        <button className="btn-primary" onClick={handlePlayAgain}>
-                            PLAY AGAIN
-                        </button>
+
+                        {/* Rematch System */}
+                        {rematchStatus ? (
+                            <div className="rematch-container">
+                                <div className="rematch-status">{rematchStatus}</div>
+                                {rematchStatus === 'Opponent wants a rematch!' && (
+                                    <div className="rematch-buttons">
+                                        <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
+                                            ✓ Accept
+                                        </button>
+                                        <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
+                                            ✗ Decline
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="rematch-container">
+                                {!rematchRequested ? (
+                                    <>
+                                        <div className="rematch-message">Want to play again with the same opponent?</div>
+                                        <div className="rematch-buttons">
+                                            <button className="btn-small accept" onClick={handleRequestRematch}>
+                                                🔁 Request Rematch
+                                            </button>
+                                            <button className="btn-small" onClick={handlePlayAgain}>
+                                                🏠 Find New Match
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="rematch-status">Waiting for opponent response...</div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
