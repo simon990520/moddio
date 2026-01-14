@@ -275,25 +275,26 @@ export default function Home() {
                         </div>
 
                         {/* Rematch System */}
-                        {rematchStatus ? (
+                        {/* Rematch System */}
+                        {rematchStatus === 'Opponent wants a rematch!' ? (
                             <div className="rematch-container">
                                 <div className="rematch-status">{rematchStatus}</div>
-                                {rematchStatus === 'Opponent wants a rematch!' && (
-                                    <div className="rematch-buttons">
-                                        <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
-                                            ✓ Accept
-                                        </button>
-                                        <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
-                                            ✗ Decline
-                                        </button>
-                                    </div>
-                                )}
+                                <div className="rematch-buttons">
+                                    <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
+                                        ✓ Accept Rematch
+                                    </button>
+                                    <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
+                                        🏠 Find New Match
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="rematch-container">
-                                {!rematchRequested ? (
+                                {rematchRequested ? (
+                                    <div className="rematch-status">Waiting for opponent response...</div>
+                                ) : (
                                     <>
-                                        <div className="rematch-message">Want to play again with the same opponent?</div>
+                                        <div className="rematch-message">Play this opponent again?</div>
                                         <div className="rematch-buttons">
                                             <button className="btn-small accept" onClick={handleRequestRematch}>
                                                 🔁 Request Rematch
@@ -303,8 +304,6 @@ export default function Home() {
                                             </button>
                                         </div>
                                     </>
-                                ) : (
-                                    <div className="rematch-status">Waiting for opponent response...</div>
                                 )}
                             </div>
                         )}
