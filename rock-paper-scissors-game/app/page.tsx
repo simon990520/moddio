@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useUser, SignInButton, UserButton, SignedIn, SignedOut } from '@clerk/nextjs';
 import type { Choice, GameState, RoundResult, GameOverData } from '@/lib/types';
@@ -11,12 +11,23 @@ const CHOICE_EMOJIS = {
     scissors: '✌️'
 };
 
-// Helper for harmonic random colors
-const getRandomColor = () => {
-    const h = Math.floor(Math.random() * 360);
-    const s = 40 + Math.floor(Math.random() * 30); // 40-70% saturation
-    const l = 15 + Math.floor(Math.random() * 15); // 15-30% lightness
-    return `hsl(${h}, ${s}%, ${l}%)`;
+// Helper for vibrant harmonic random colors
+const getRandomColors = () => {
+    const baseHue = Math.floor(Math.random() * 360);
+    // Two hues that are close to each other for harmony
+    const h1 = baseHue;
+    const h2 = (baseHue + 40) % 360;
+
+    const s1 = 60 + Math.floor(Math.random() * 20); // 60-80% saturation
+    const l1 = 20 + Math.floor(Math.random() * 15); // 20-35% lightness
+
+    const s2 = 50 + Math.floor(Math.random() * 20);
+    const l2 = 15 + Math.floor(Math.random() * 15);
+
+    return {
+        c1: `hsl(${h1}, ${s1}%, ${l1}%)`,
+        c2: `hsl(${h2}, ${s2}%, ${l2}%)`
+    };
 };
 
 export default function Home() {
@@ -38,23 +49,31 @@ export default function Home() {
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
-    // Dynamic Background State
-    const [bgColors, setBgColors] = useState({ color1: getRandomColor(), color2: getRandomColor() });
+    // Infinite Hue Cycle Background (60fps)
+    const hueRef = useRef(Math.floor(Math.random() * 360));
 
     useEffect(() => {
-        // Background shift interval
-        const interval = setInterval(() => {
-            setBgColors({ color1: getRandomColor(), color2: getRandomColor() });
-        }, 15000); // Shift every 15 seconds
+        let frameId: number;
 
-        return () => clearInterval(interval);
+        const updateBackground = () => {
+            // Increment hue slowly (speed: ~3 degrees per second)
+            hueRef.current = (hueRef.current + 0.05) % 360;
+
+            const h1 = hueRef.current;
+            const h2 = (h1 + 60) % 360; // 60 deg offset for nice harmony
+
+            const c1 = `hsl(${h1}, 65%, 20%)`;
+            const c2 = `hsl(${h2}, 55%, 15%)`;
+
+            document.documentElement.style.setProperty('--bg-1', c1);
+            document.documentElement.style.setProperty('--bg-2', c2);
+
+            frameId = requestAnimationFrame(updateBackground);
+        };
+
+        frameId = requestAnimationFrame(updateBackground);
+        return () => cancelAnimationFrame(frameId);
     }, []);
-
-    useEffect(() => {
-        // Apply colors to CSS variables
-        document.documentElement.style.setProperty('--bg-color-1', bgColors.color1);
-        document.documentElement.style.setProperty('--bg-color-2', bgColors.color2);
-    }, [bgColors]);
 
     useEffect(() => {
         const socketIo = io('http://localhost:3000');
@@ -197,205 +216,207 @@ export default function Home() {
     };
 
     return (
-        <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
-                ? 'victory-reward' : ''
-            } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
-                ? 'shake' : ''
-            }`}>
-            {/* Header with User Profile */}
-            <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000 }}>
-                <SignedIn>
-                    <UserButton />
-                </SignedIn>
-            </div>
-
-            {/* Score bars */}
-            <div className="score-container">
-                {/* Left score bar (Player - Red) */}
-                <div className="score-bar left">
-                    <div
-                        className="score-fill red"
-                        style={{ height: `${(playerScore / 3) * 100}%` }}
-                    />
+        <>
+            <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
+                    ? 'victory-reward' : ''
+                } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
+                    ? 'shake' : ''
+                }`}>
+                {/* Header with User Profile */}
+                <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000 }}>
+                    <SignedIn>
+                        <UserButton />
+                    </SignedIn>
                 </div>
 
-                {/* Right score bar (Opponent - Blue) */}
-                <div className="score-bar right">
-                    <div
-                        className="score-fill blue"
-                        style={{ height: `${(opponentScore / 3) * 100}%` }}
-                    />
-                </div>
-
-                {/* Score icons */}
-                <div className="score-icon top-left" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                <div className="score-icon bottom-left" style={{ color: 'var(--score-red)' }}>🔴</div>
-                <div className="score-icon top-right" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                <div className="score-icon bottom-right" style={{ color: 'var(--score-orange)' }}>🟠</div>
-            </div>
-
-            {/* Hands visual with collision animation */}
-            {(gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult') && (
-                <div className="hands-container">
-                    <div className={`hand top ${showCollision ? 'collide-top' : ''}`}>
-                        {gameState === 'roundResult' && opponentChoice ? CHOICE_EMOJIS[opponentChoice] : '✊'}
+                {/* Score bars */}
+                <div className="score-container">
+                    {/* Left score bar (Player - Red) */}
+                    <div className="score-bar left">
+                        <div
+                            className="score-fill red"
+                            style={{ height: `${(playerScore / 3) * 100}%` }}
+                        />
                     </div>
-                    <div className={`hand bottom ${showCollision ? 'collide-bottom' : ''}`}>
-                        {gameState === 'roundResult' && playerChoice ? CHOICE_EMOJIS[playerChoice] : '✊'}
+
+                    {/* Right score bar (Opponent - Blue) */}
+                    <div className="score-bar right">
+                        <div
+                            className="score-fill blue"
+                            style={{ height: `${(opponentScore / 3) * 100}%` }}
+                        />
                     </div>
+
+                    {/* Score icons */}
+                    <div className="score-icon top-left" style={{ color: 'var(--score-blue)' }}>🔵</div>
+                    <div className="score-icon bottom-left" style={{ color: 'var(--score-red)' }}>🔴</div>
+                    <div className="score-icon top-right" style={{ color: 'var(--score-blue)' }}>🔵</div>
+                    <div className="score-icon bottom-right" style={{ color: 'var(--score-orange)' }}>🟠</div>
                 </div>
-            )}
 
-            {/* Timer */}
-            {(gameState === 'playing' || gameState === 'roundResult') && (
-                <div className="timer">
-                    {gameState === 'playing' ? `0:${String(round).padStart(2, '0')}` : `Score: ${playerScore}-${opponentScore}`}
-                </div>
-            )}
+                {/* Hands visual with collision animation */}
+                {(gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult') && (
+                    <div className="hands-container">
+                        <div className={`hand top ${showCollision ? 'collide-top' : ''}`}>
+                            {gameState === 'roundResult' && opponentChoice ? CHOICE_EMOJIS[opponentChoice] : '✊'}
+                        </div>
+                        <div className={`hand bottom ${showCollision ? 'collide-bottom' : ''}`}>
+                            {gameState === 'roundResult' && playerChoice ? CHOICE_EMOJIS[playerChoice] : '✊'}
+                        </div>
+                    </div>
+                )}
 
-            {/* Center content */}
-            <div className="center-content">
-                {gameState === 'lobby' && (
-                    <div style={{ textAlign: 'center' }}>
-                        <h1 className="game-title" style={{ marginBottom: '40px' }}>
-                            ROCK<br />PAPER<br />SCISSORS
-                        </h1>
+                {/* Timer */}
+                {(gameState === 'playing' || gameState === 'roundResult') && (
+                    <div className="timer">
+                        {gameState === 'playing' ? `0:${String(round).padStart(2, '0')}` : `Score: ${playerScore}-${opponentScore}`}
+                    </div>
+                )}
 
-                        <SignedOut>
-                            <SignInButton mode="modal">
-                                <button className="btn-primary">
+                {/* Center content */}
+                <div className="center-content">
+                    {gameState === 'lobby' && (
+                        <div style={{ textAlign: 'center' }}>
+                            <h1 className="game-title" style={{ marginBottom: '40px' }}>
+                                ROCK<br />PAPER<br />SCISSORS
+                            </h1>
+
+                            <SignedOut>
+                                <SignInButton mode="modal">
+                                    <button className="btn-primary">
+                                        START
+                                    </button>
+                                </SignInButton>
+                                <p style={{ marginTop: '15px', opacity: 0.6, fontSize: '0.9rem' }}>
+                                    Sign in required to play
+                                </p>
+                            </SignedOut>
+
+                            <SignedIn>
+                                <button className="btn-primary" onClick={handleFindMatch}>
                                     START
                                 </button>
-                            </SignInButton>
-                            <p style={{ marginTop: '15px', opacity: 0.6, fontSize: '0.9rem' }}>
-                                Sign in required to play
+                                <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '1rem', fontWeight: 700 }}>
+                                    Welcome, {user?.firstName || 'Player'}!
+                                </p>
+                            </SignedIn>
+                        </div>
+                    )}
+
+                    {gameState === 'waiting' && (
+                        <div>
+                            <h1 className="game-title waiting-dots" style={{ marginBottom: '20px' }}>
+                                ROCK<br />PAPER<br />SCISSORS
+                            </h1>
+                            <p style={{ fontSize: '1.2rem', opacity: 0.8, textAlign: 'center' }}>
+                                Searching for opponent<span className="waiting-dots"></span>
                             </p>
-                        </SignedOut>
-
-                        <SignedIn>
-                            <button className="btn-primary" onClick={handleFindMatch}>
-                                START
-                            </button>
-                            <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '1rem', fontWeight: 700 }}>
-                                Welcome, {user?.firstName || 'Player'}!
-                            </p>
-                        </SignedIn>
-                    </div>
-                )}
-
-                {gameState === 'waiting' && (
-                    <div>
-                        <h1 className="game-title waiting-dots" style={{ marginBottom: '20px' }}>
-                            ROCK<br />PAPER<br />SCISSORS
-                        </h1>
-                        <p style={{ fontSize: '1.2rem', opacity: 0.8, textAlign: 'center' }}>
-                            Searching for opponent<span className="waiting-dots"></span>
-                        </p>
-                    </div>
-                )}
-
-                {gameState === 'countdown' && (
-                    <div className="countdown">{countdown}</div>
-                )}
-
-                {gameState === 'playing' && (
-                    <h1 className="game-subtitle">FIGHT</h1>
-                )}
-
-                {gameState === 'roundResult' && (
-                    <div>
-                        <div className="result-display">
-                            <div className="result-choice">
-                                <div className="result-emoji">{playerChoice && CHOICE_EMOJIS[playerChoice]}</div>
-                                <div className="result-label">You</div>
-                            </div>
-                            <div className="vs-text">VS</div>
-                            <div className="result-choice">
-                                <div className="result-emoji">{opponentChoice && CHOICE_EMOJIS[opponentChoice]}</div>
-                                <div className="result-label">Opponent</div>
-                            </div>
                         </div>
-                        <div className={`result-message ${roundWinner === 'player' ? 'win' : roundWinner === 'opponent' ? 'lose' : 'tie'}`}>
-                            {roundWinner === 'player' ? '🎉 You Won!' : roundWinner === 'opponent' ? '😢 You Lost' : '🤝 Tie!'}
-                        </div>
-                    </div>
-                )}
+                    )}
 
-                {gameState === 'gameOver' && (
-                    <div style={{ textAlign: 'center' }}>
-                        <h1 className="game-title" style={{ marginBottom: '30px' }}>
-                            {gameWinner === 'player' ? '🏆 VICTORY!' : '💔 DEFEAT'}
-                        </h1>
-                        <div style={{ fontSize: '2rem', marginBottom: '30px' }}>
-                            Final Score: {playerScore} - {opponentScore}
-                        </div>
+                    {gameState === 'countdown' && (
+                        <div className="countdown">{countdown}</div>
+                    )}
 
-                        {/* Rematch System */}
-                        {/* Rematch System */}
-                        {rematchStatus === 'Opponent wants a rematch!' ? (
-                            <div className="rematch-container">
-                                <div className="rematch-status">{rematchStatus}</div>
-                                <div className="rematch-buttons">
-                                    <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
-                                        ✓ Accept Rematch
-                                    </button>
-                                    <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
-                                        🏠 Find New Match
-                                    </button>
+                    {gameState === 'playing' && (
+                        <h1 className="game-subtitle">FIGHT</h1>
+                    )}
+
+                    {gameState === 'roundResult' && (
+                        <div>
+                            <div className="result-display">
+                                <div className="result-choice">
+                                    <div className="result-emoji">{playerChoice && CHOICE_EMOJIS[playerChoice]}</div>
+                                    <div className="result-label">You</div>
+                                </div>
+                                <div className="vs-text">VS</div>
+                                <div className="result-choice">
+                                    <div className="result-emoji">{opponentChoice && CHOICE_EMOJIS[opponentChoice]}</div>
+                                    <div className="result-label">Opponent</div>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="rematch-container">
-                                {rematchRequested ? (
-                                    <div className="rematch-status">Waiting for opponent response...</div>
-                                ) : (
-                                    <>
-                                        <div className="rematch-message">Play this opponent again?</div>
-                                        <div className="rematch-buttons">
-                                            <button className="btn-small accept" onClick={handleRequestRematch}>
-                                                🔁 Request Rematch
-                                            </button>
-                                            <button className="btn-small" onClick={handlePlayAgain}>
-                                                🏠 Find New Match
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
+                            <div className={`result-message ${roundWinner === 'player' ? 'win' : roundWinner === 'opponent' ? 'lose' : 'tie'}`}>
+                                {roundWinner === 'player' ? '🎉 You Won!' : roundWinner === 'opponent' ? '😢 You Lost' : '🤝 Tie!'}
                             </div>
-                        )}
+                        </div>
+                    )}
+
+                    {gameState === 'gameOver' && (
+                        <div style={{ textAlign: 'center' }}>
+                            <h1 className="game-title" style={{ marginBottom: '30px' }}>
+                                {gameWinner === 'player' ? '🏆 VICTORY!' : '💔 DEFEAT'}
+                            </h1>
+                            <div style={{ fontSize: '2rem', marginBottom: '30px' }}>
+                                Final Score: {playerScore} - {opponentScore}
+                            </div>
+
+                            {/* Rematch System */}
+                            {/* Rematch System */}
+                            {rematchStatus === 'Opponent wants a rematch!' ? (
+                                <div className="rematch-container">
+                                    <div className="rematch-status">{rematchStatus}</div>
+                                    <div className="rematch-buttons">
+                                        <button className="btn-small accept" onClick={() => handleRematchResponse(true)}>
+                                            ✓ Accept Rematch
+                                        </button>
+                                        <button className="btn-small decline" onClick={() => handleRematchResponse(false)}>
+                                            🏠 Find New Match
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="rematch-container">
+                                    {rematchRequested ? (
+                                        <div className="rematch-status">Waiting for opponent response...</div>
+                                    ) : (
+                                        <>
+                                            <div className="rematch-message">Play this opponent again?</div>
+                                            <div className="rematch-buttons">
+                                                <button className="btn-small accept" onClick={handleRequestRematch}>
+                                                    🔁 Request Rematch
+                                                </button>
+                                                <button className="btn-small" onClick={handlePlayAgain}>
+                                                    🏠 Find New Match
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Choice buttons */}
+                {(gameState === 'playing' || gameState === 'roundResult') && (
+                    <div className="choice-buttons">
+                        <button
+                            className="choice-btn"
+                            onClick={() => handleChoice('rock')}
+                            disabled={choiceMade || gameState === 'roundResult'}
+                            title="Rock"
+                        >
+                            ✊
+                        </button>
+                        <button
+                            className="choice-btn"
+                            onClick={() => handleChoice('paper')}
+                            disabled={choiceMade || gameState === 'roundResult'}
+                            title="Paper"
+                        >
+                            ✋
+                        </button>
+                        <button
+                            className="choice-btn"
+                            onClick={() => handleChoice('scissors')}
+                            disabled={choiceMade || gameState === 'roundResult'}
+                            title="Scissors"
+                        >
+                            ✌️
+                        </button>
                     </div>
                 )}
             </div>
-
-            {/* Choice buttons */}
-            {(gameState === 'playing' || gameState === 'roundResult') && (
-                <div className="choice-buttons">
-                    <button
-                        className="choice-btn"
-                        onClick={() => handleChoice('rock')}
-                        disabled={choiceMade || gameState === 'roundResult'}
-                        title="Rock"
-                    >
-                        ✊
-                    </button>
-                    <button
-                        className="choice-btn"
-                        onClick={() => handleChoice('paper')}
-                        disabled={choiceMade || gameState === 'roundResult'}
-                        title="Paper"
-                    >
-                        ✋
-                    </button>
-                    <button
-                        className="choice-btn"
-                        onClick={() => handleChoice('scissors')}
-                        disabled={choiceMade || gameState === 'roundResult'}
-                        title="Scissors"
-                    >
-                        ✌️
-                    </button>
-                </div>
-            )}
-        </div>
+        </>
     );
 }
