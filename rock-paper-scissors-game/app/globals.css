@@ -7,7 +7,8 @@
 }
 
 :root {
-  --gradient-bg: linear-gradient(180deg, #2d1b3d 0%, #4a2c2a 100%);
+  --bg-color-1: #2d1b3d;
+  --bg-color-2: #4a2c2a;
   --score-red: #ff3b4f;
   --score-blue: #4fbfff;
   --score-green: #4bff7c;
@@ -21,9 +22,10 @@ html,
 body {
   height: 100%;
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--gradient-bg);
+  background: linear-gradient(180deg, var(--bg-color-1) 0%, var(--bg-color-2) 100%);
   color: white;
   overflow: hidden;
+  transition: background 30s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body {
@@ -40,12 +42,55 @@ body {
   height: 100vh;
   max-width: 420px;
   max-height: 900px;
-  background: var(--gradient-bg);
+  background: linear-gradient(180deg, var(--bg-color-1) 0%, var(--bg-color-2) 100%);
   border-radius: 0;
   overflow: hidden;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
+  transition: background 30s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.victory-reward {
+  animation: victoryGlow 1.5s ease-in-out infinite alternate;
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+}
+
+@keyframes victoryGlow {
+  from {
+    box-shadow: 0 0 20px rgba(75, 255, 124, 0.3), inset 0 0 20px rgba(75, 255, 124, 0.1);
+  }
+
+  to {
+    box-shadow: 0 0 50px rgba(75, 255, 124, 0.6), inset 0 0 40px rgba(75, 255, 124, 0.3);
+  }
+}
+
+@keyframes shake {
+
+  10%,
+  90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+
+  20%,
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+
+  40%,
+  60% {
+    transform: translate3d(4px, 0, 0);
+  }
 }
 
 @media (min-width: 421px) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useUser, SignInButton, UserButton, SignedIn, SignedOut } from '@clerk/nextjs';
 import type { Choice, GameState, RoundResult, GameOverData } from '@/lib/types';
 
 const CHOICE_EMOJIS = {
@@ -10,7 +11,16 @@ const CHOICE_EMOJIS = {
     scissors: '✌️'
 };
 
+// Helper for harmonic random colors
+const getRandomColor = () => {
+    const h = Math.floor(Math.random() * 360);
+    const s = 40 + Math.floor(Math.random() * 30); // 40-70% saturation
+    const l = 15 + Math.floor(Math.random() * 15); // 15-30% lightness
+    return `hsl(${h}, ${s}%, ${l}%)`;
+};
+
 export default function Home() {
+    const { user, isSignedIn } = useUser();
     const [socket, setSocket] = useState<Socket | null>(null);
     const [gameState, setGameState] = useState<GameState>('lobby');
     const [countdown, setCountdown] = useState<number>(3);
@@ -27,6 +37,24 @@ export default function Home() {
     // Rematch states
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
+
+    // Dynamic Background State
+    const [bgColors, setBgColors] = useState({ color1: getRandomColor(), color2: getRandomColor() });
+
+    useEffect(() => {
+        // Background shift interval
+        const interval = setInterval(() => {
+            setBgColors({ color1: getRandomColor(), color2: getRandomColor() });
+        }, 15000); // Shift every 15 seconds
+
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        // Apply colors to CSS variables
+        document.documentElement.style.setProperty('--bg-color-1', bgColors.color1);
+        document.documentElement.style.setProperty('--bg-color-2', bgColors.color2);
+    }, [bgColors]);
 
     useEffect(() => {
         const socketIo = io('http://localhost:3000');
@@ -119,7 +147,7 @@ export default function Home() {
     }, []);
 
     const handleFindMatch = () => {
-        if (socket) {
+        if (socket && isSignedIn) {
             socket.emit('findMatch');
         }
     };
@@ -169,7 +197,18 @@ export default function Home() {
     };
 
     return (
-        <div className="game-container">
+        <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
+                ? 'victory-reward' : ''
+            } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
+                ? 'shake' : ''
+            }`}>
+            {/* Header with User Profile */}
+            <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000 }}>
+                <SignedIn>
+                    <UserButton />
+                </SignedIn>
+            </div>
+
             {/* Score bars */}
             <div className="score-container">
                 {/* Left score bar (Player - Red) */}
@@ -221,9 +260,26 @@ export default function Home() {
                         <h1 className="game-title" style={{ marginBottom: '40px' }}>
                             ROCK<br />PAPER<br />SCISSORS
                         </h1>
-                        <button className="btn-primary" onClick={handleFindMatch}>
-                            START
-                        </button>
+
+                        <SignedOut>
+                            <SignInButton mode="modal">
+                                <button className="btn-primary">
+                                    START
+                                </button>
+                            </SignInButton>
+                            <p style={{ marginTop: '15px', opacity: 0.6, fontSize: '0.9rem' }}>
+                                Sign in required to play
+                            </p>
+                        </SignedOut>
+
+                        <SignedIn>
+                            <button className="btn-primary" onClick={handleFindMatch}>
+                                START
+                            </button>
+                            <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '1rem', fontWeight: 700 }}>
+                                Welcome, {user?.firstName || 'Player'}!
+                            </p>
+                        </SignedIn>
                     </div>
                 )}
 

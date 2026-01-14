@@ -6,14 +6,19 @@ export const metadata: Metadata = {
     description: 'Real-time multiplayer rock paper scissors game',
 }
 
+import { ClerkProvider } from '@clerk/nextjs'
+import { dark } from '@clerk/themes'
+
 export default function RootLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
     return (
-        <html lang="en" suppressHydrationWarning>
-            <body suppressHydrationWarning>{children}</body>
-        </html>
+        <ClerkProvider appearance={{ baseTheme: dark }}>
+            <html lang="en" suppressHydrationWarning>
+                <body suppressHydrationWarning>{children}</body>
+            </html>
+        </ClerkProvider>
     )
 }
