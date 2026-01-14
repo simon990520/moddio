@@ -50,41 +50,9 @@ body {
   flex-direction: column;
 }
 
-.victory-reward {
-  animation: victoryGlow 1.5s ease-in-out infinite alternate;
-}
-
-.defeat-glow {
-  animation: defeatGlow 1.5s ease-in-out infinite alternate;
-}
-
 .shake {
   animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
   animation-iteration-count: 2;
-}
-
-@keyframes victoryGlow {
-  from {
-    box-shadow: 0 0 20px rgba(75, 255, 124, 0.4), inset 0 0 20px rgba(75, 255, 124, 0.2);
-    border: 2px solid rgba(75, 255, 124, 0.5);
-  }
-
-  to {
-    box-shadow: 0 0 60px rgba(75, 255, 124, 0.7), inset 0 0 40px rgba(75, 255, 124, 0.4);
-    border: 2px solid rgba(75, 255, 124, 0.8);
-  }
-}
-
-@keyframes defeatGlow {
-  from {
-    box-shadow: 0 0 20px rgba(255, 59, 79, 0.4), inset 0 0 20px rgba(255, 59, 79, 0.2);
-    border: 2px solid rgba(255, 59, 79, 0.5);
-  }
-
-  to {
-    box-shadow: 0 0 60px rgba(255, 59, 79, 0.7), inset 0 0 40px rgba(255, 59, 79, 0.4);
-    border: 2px solid rgba(255, 59, 79, 0.8);
-  }
 }
 
 @keyframes shake {

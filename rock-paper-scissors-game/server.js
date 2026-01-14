@@ -172,7 +172,7 @@ app.prepare().then(() => {
             }
 
             const player = createPlayer(socket.id, userId, imageUrl);
-            console.log('[SERVER_GAME] Created player object for:', userId);
+            console.log('[SERVER_GAME] Created player object for:', userId, 'with image:', !!imageUrl);
 
             // If someone is waiting, match them
             if (waitingPlayers.length > 0) {
