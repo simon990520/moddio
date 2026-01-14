@@ -65,6 +65,7 @@ export default function Home() {
     // Leaderboard State
     const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
     const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+    const [timeFilter, setTimeFilter] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
     const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
 
     const fetchLeaderboard = async () => {
@@ -400,29 +401,77 @@ export default function Home() {
                 {/* Leaderboard Overlay */}
                 {showLeaderboard && (
                     <div className="leaderboard-overlay">
-                        <div className="leaderboard-header">
-                            <h2 className="leaderboard-title">HALL OF FAME</h2>
-                            <button className="close-btn" onClick={() => setShowLeaderboard(false)}>&times;</button>
-                        </div>
-                        <div className="leaderboard-list">
-                            {loadingLeaderboard ? (
-                                <div style={{ textAlign: 'center', padding: '40px' }}>Loading legends...</div>
-                            ) : leaderboardData.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '40px', opacity: 0.5 }}>No legends yet. Start playing!</div>
-                            ) : (
-                                leaderboardData.map((player, index) => (
-                                    <div key={player.id} className="leaderboard-item">
-                                        <div className={`rank-badge ${index < 3 ? `rank-${index + 1}` : ''}`}>
-                                            {index + 1}
+                        <div className="leaderboard-card">
+                            <div className="leaderboard-header">
+                                <div className="leaderboard-logo">🏆</div>
+                                <h2 className="leaderboard-title">HALL OF FAME</h2>
+                                <button className="close-btn" onClick={() => setShowLeaderboard(false)}>×</button>
+                            </div>
+
+                            <div className="filter-tabs">
+                                <button
+                                    className={`tab-btn ${timeFilter === 'daily' ? 'active' : ''}`}
+                                    onClick={() => setTimeFilter('daily')}
+                                >
+                                    Daily
+                                </button>
+                                <button
+                                    className={`tab-btn ${timeFilter === 'weekly' ? 'active' : ''}`}
+                                    onClick={() => setTimeFilter('weekly')}
+                                >
+                                    Weekly
+                                </button>
+                                <button
+                                    className={`tab-btn ${timeFilter === 'monthly' ? 'active' : ''}`}
+                                    onClick={() => setTimeFilter('monthly')}
+                                >
+                                    Monthly
+                                </button>
+                            </div>
+
+                            <div className="top-three-container">
+                                {[1, 0, 2].map((orderIndex) => {
+                                    const player = leaderboardData[orderIndex];
+                                    if (!player && leaderboardData.length > orderIndex) return null;
+
+                                    if (!player) return (
+                                        <div key={`placeholder-${orderIndex}`} className={`rank-card rank-${orderIndex + 1}`} style={{ opacity: 0.3 }}>
+                                            <div className="rank-avatar">?</div>
+                                            <div className="rank-name">Empty</div>
+                                            <div className="rank-score">--</div>
                                         </div>
-                                        <div className="player-info">
-                                            <div className="player-name">{player.username || `Player ${player.id.substring(0, 5)}`}</div>
-                                            <div className="player-stats">{player.total_games} games played</div>
+                                    );
+
+                                    return (
+                                        <div key={player.id} className={`rank-card rank-${orderIndex + 1}`}>
+                                            <div className="rank-avatar">{orderIndex + 1}</div>
+                                            <div className="rank-name">{player.username || `Player ${player.id.substring(0, 4)}`}</div>
+                                            <div className="rank-score">{player.total_wins} W</div>
                                         </div>
-                                        <div className="win-count">{player.total_wins} W</div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="leaderboard-list">
+                                {leaderboardData.slice(3).length === 0 ? (
+                                    <div style={{ textAlign: 'center', opacity: 0.5, padding: '20px', fontSize: '0.9rem' }}>
+                                        {leaderboardData.length <= 3 ? "No other contenders..." : "Loading..."}
                                     </div>
-                                ))
-                            )}
+                                ) : (
+                                    leaderboardData.slice(3).map((player, index) => (
+                                        <div key={player.id} className="leaderboard-item">
+                                            <div className="rank-badge" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', width: '30px', height: '30px', fontSize: '0.9rem' }}>
+                                                {index + 4}
+                                            </div>
+                                            <div className="player-info">
+                                                <div className="player-name">{player.username || `Player ${player.id.substring(0, 5)}`}</div>
+                                                <div className="player-stats">{player.total_games} games</div>
+                                            </div>
+                                            <div className="win-count" style={{ fontSize: '1rem' }}>{player.total_wins} W</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
