@@ -238,7 +238,7 @@ body {
 /* Top Info Bar (Scores & Status) */
 .top-info-bar {
   position: fixed;
-  top: 20px;
+  top: 100px;
   /* Space from top */
   left: 0;
   width: 100%;

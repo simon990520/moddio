@@ -177,7 +177,7 @@ app.prepare().then(() => {
             // If someone is waiting, match them
             if (waitingPlayers.length > 0) {
                 const opponent = waitingPlayers.shift();
-                console.log('[SERVER_GAME] MATCH FOUND! Matching with opponent:', opponent.socketId);
+                console.log('[SERVER_GAME] MATCH FOUND! Matching with opponent:', opponent.socketId, 'Image:', !!opponent.imageUrl);
                 const room = createRoom(player, opponent);
 
                 activeRooms.set(socket.id, room);
@@ -190,19 +190,23 @@ app.prepare().then(() => {
                 console.log('[SERVER_GAME] Unified Room joined:', room.id);
 
                 // Notify both players
-                socket.emit('matchFound', {
+                const matchData0 = {
                     roomId: room.id,
                     playerIndex: 0,
                     opponentId: opponent.id,
-                    opponentImageUrl: opponent.imageUrl
-                });
+                    opponentImageUrl: opponent.imageUrl || null
+                };
+                console.log('[SERVER_GAME] Emitting matchFound to P0:', socket.id, matchData0);
+                socket.emit('matchFound', matchData0);
 
-                io.to(opponent.socketId).emit('matchFound', {
+                const matchData1 = {
                     roomId: room.id,
                     playerIndex: 1,
                     opponentId: player.id,
-                    opponentImageUrl: player.imageUrl
-                });
+                    opponentImageUrl: player.imageUrl || null
+                };
+                console.log('[SERVER_GAME] Emitting matchFound to P1:', opponent.socketId, matchData1);
+                io.to(opponent.socketId).emit('matchFound', matchData1);
 
                 // Start countdown after 1 second
                 setTimeout(() => {

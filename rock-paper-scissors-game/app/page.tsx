@@ -305,10 +305,10 @@ export default function Home() {
             });
 
             socketIo.on('opponentDisconnected', () => {
-                alert('Opponent disconnected!');
-                setGameState('lobby');
+                console.warn('[GAME_STATUS] Opponent disconnected mid-game');
+                setGameState('gameOver');
+                setRematchStatus('Opponent disconnected!');
                 setRematchRequested(false);
-                setRematchStatus('');
             });
 
             socketIo.on('opponentLeft', () => {
@@ -388,10 +388,7 @@ export default function Home() {
         setRematchStatus('');
 
         // Directly enter queue
-        if (socket) {
-            console.log('[GAME_ACTION] Start journey for new match...');
-            socket.emit('findMatch', { imageUrl: user?.imageUrl });
-        }
+        handleFindMatch();
     };
 
     return (
@@ -626,7 +623,11 @@ export default function Home() {
                                         Play this opponent again?
                                     </p>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                        <button className="btn-primary" onClick={handleRequestRematch} disabled={rematchRequested}>
+                                        <button
+                                            className="btn-primary"
+                                            onClick={handleRequestRematch}
+                                            disabled={rematchRequested || rematchStatus === 'Opponent disconnected!'}
+                                        >
                                             {rematchRequested ? 'WAITING...' : 'REMATCH'}
                                         </button>
                                         <button className="btn-secondary" onClick={handlePlayAgain}>
