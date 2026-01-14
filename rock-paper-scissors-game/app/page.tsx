@@ -380,121 +380,141 @@ export default function Home() {
 
     return (
         <>
+            {/* Header with User Profile and Leaderboard Toggle - Outside Shake Container */}
+            <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <button
+                    className="leaderboard-toggle"
+                    onClick={() => setShowLeaderboard(true)}
+                >
+                    🏆 Rankings
+                </button>
+                <SignedIn>
+                    <UserButton afterSignOutUrl="/" />
+                </SignedIn>
+            </div>
+
+            {/* Leaderboard Overlay */}
+            {showLeaderboard && (
+                <div className="leaderboard-overlay">
+                    <div className="leaderboard-card">
+                        <div className="leaderboard-header">
+                            <div className="leaderboard-logo">🏆</div>
+                            <h2 className="leaderboard-title">HALL OF FAME</h2>
+                            <button className="close-btn" onClick={() => setShowLeaderboard(false)}>×</button>
+                        </div>
+
+                        <div className="filter-tabs">
+                            <button
+                                className={`tab-btn ${timeFilter === 'daily' ? 'active' : ''}`}
+                                onClick={() => setTimeFilter('daily')}
+                            >
+                                Daily
+                            </button>
+                            <button
+                                className={`tab-btn ${timeFilter === 'weekly' ? 'active' : ''}`}
+                                onClick={() => setTimeFilter('weekly')}
+                            >
+                                Weekly
+                            </button>
+                            <button
+                                className={`tab-btn ${timeFilter === 'monthly' ? 'active' : ''}`}
+                                onClick={() => setTimeFilter('monthly')}
+                            >
+                                Monthly
+                            </button>
+                        </div>
+
+                        <div className="top-three-container">
+                            {[1, 0, 2].map((orderIndex) => {
+                                const player = leaderboardData[orderIndex];
+                                if (!player && leaderboardData.length > orderIndex) return null;
+
+                                if (!player) return (
+                                    <div key={`placeholder-${orderIndex}`} className={`rank-card rank-${orderIndex + 1}`} style={{ opacity: 0.3 }}>
+                                        <div className="rank-avatar">?</div>
+                                        <div className="rank-name">Empty</div>
+                                        <div className="rank-score">--</div>
+                                    </div>
+                                );
+
+                                return (
+                                    <div key={player.id} className={`rank-card rank-${orderIndex + 1}`}>
+                                        <div className="rank-avatar">{orderIndex + 1}</div>
+                                        <div className="rank-name">{player.username || `Player ${player.id.substring(0, 4)}`}</div>
+                                        <div className="rank-score">{player.total_wins} W</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="leaderboard-list">
+                            {leaderboardData.slice(3).length === 0 ? (
+                                <div style={{ textAlign: 'center', opacity: 0.5, padding: '20px', fontSize: '0.9rem' }}>
+                                    {leaderboardData.length <= 3 ? "No other contenders..." : "Loading..."}
+                                </div>
+                            ) : (
+                                leaderboardData.slice(3).map((player, index) => (
+                                    <div key={player.id} className="leaderboard-item">
+                                        <div className="rank-badge" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', width: '30px', height: '30px', fontSize: '0.9rem' }}>
+                                            {index + 4}
+                                        </div>
+                                        <div className="player-info">
+                                            <div className="player-name">{player.username || `Player ${player.id.substring(0, 5)}`}</div>
+                                            <div className="player-stats">{player.total_games} games</div>
+                                        </div>
+                                        <div className="win-count" style={{ fontSize: '1rem' }}>{player.total_wins} W</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
+
             <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
                 ? 'victory-reward' : ''
                 } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
                     ? 'shake' : ''
                 }`}>
-                {/* Header with User Profile and Leaderboard Toggle */}
-                <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
-                    <button
-                        className="leaderboard-toggle"
-                        onClick={() => setShowLeaderboard(true)}
-                    >
-                        🏆 Rankings
-                    </button>
-                    <SignedIn>
-                        <UserButton afterSignOutUrl="/" />
-                    </SignedIn>
-                </div>
 
-                {/* Leaderboard Overlay */}
-                {showLeaderboard && (
-                    <div className="leaderboard-overlay">
-                        <div className="leaderboard-card">
-                            <div className="leaderboard-header">
-                                <div className="leaderboard-logo">🏆</div>
-                                <h2 className="leaderboard-title">HALL OF FAME</h2>
-                                <button className="close-btn" onClick={() => setShowLeaderboard(false)}>×</button>
+                {/* Integrated Vertical Score Bars */}
+                {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'countdown' || gameState === 'gameOver') && (
+                    <>
+                        <div className="score-bar score-bar-left">
+                            <div className="score-text" style={{ color: 'var(--score-green)' }}>{playerScore}</div>
+                            <div className="score-track">
+                                <div className="score-fill fill-left" style={{ height: `${(playerScore / 3) * 100}%` }}></div>
                             </div>
-
-                            <div className="filter-tabs">
-                                <button
-                                    className={`tab-btn ${timeFilter === 'daily' ? 'active' : ''}`}
-                                    onClick={() => setTimeFilter('daily')}
-                                >
-                                    Daily
-                                </button>
-                                <button
-                                    className={`tab-btn ${timeFilter === 'weekly' ? 'active' : ''}`}
-                                    onClick={() => setTimeFilter('weekly')}
-                                >
-                                    Weekly
-                                </button>
-                                <button
-                                    className={`tab-btn ${timeFilter === 'monthly' ? 'active' : ''}`}
-                                    onClick={() => setTimeFilter('monthly')}
-                                >
-                                    Monthly
-                                </button>
-                            </div>
-
-                            <div className="top-three-container">
-                                {[1, 0, 2].map((orderIndex) => {
-                                    const player = leaderboardData[orderIndex];
-                                    if (!player && leaderboardData.length > orderIndex) return null;
-
-                                    if (!player) return (
-                                        <div key={`placeholder-${orderIndex}`} className={`rank-card rank-${orderIndex + 1}`} style={{ opacity: 0.3 }}>
-                                            <div className="rank-avatar">?</div>
-                                            <div className="rank-name">Empty</div>
-                                            <div className="rank-score">--</div>
-                                        </div>
-                                    );
-
-                                    return (
-                                        <div key={player.id} className={`rank-card rank-${orderIndex + 1}`}>
-                                            <div className="rank-avatar">{orderIndex + 1}</div>
-                                            <div className="rank-name">{player.username || `Player ${player.id.substring(0, 4)}`}</div>
-                                            <div className="rank-score">{player.total_wins} W</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="leaderboard-list">
-                                {leaderboardData.slice(3).length === 0 ? (
-                                    <div style={{ textAlign: 'center', opacity: 0.5, padding: '20px', fontSize: '0.9rem' }}>
-                                        {leaderboardData.length <= 3 ? "No other contenders..." : "Loading..."}
-                                    </div>
-                                ) : (
-                                    leaderboardData.slice(3).map((player, index) => (
-                                        <div key={player.id} className="leaderboard-item">
-                                            <div className="rank-badge" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', width: '30px', height: '30px', fontSize: '0.9rem' }}>
-                                                {index + 4}
-                                            </div>
-                                            <div className="player-info">
-                                                <div className="player-name">{player.username || `Player ${player.id.substring(0, 5)}`}</div>
-                                                <div className="player-stats">{player.total_games} games</div>
-                                            </div>
-                                            <div className="win-count" style={{ fontSize: '1rem' }}>{player.total_wins} W</div>
-                                        </div>
-                                    ))
-                                )}
+                            <div className="score-avatar">
+                                {user?.imageUrl ? <img src={user.imageUrl} className="avatar-img" alt="You" /> : '😎'}
                             </div>
                         </div>
-                    </div>
+                        <div className="score-bar score-bar-right">
+                            <div className="score-text" style={{ color: 'var(--score-red)' }}>{opponentScore}</div>
+                            <div className="score-track">
+                                <div className="score-fill fill-right" style={{ height: `${(opponentScore / 3) * 100}%` }}></div>
+                            </div>
+                            <div className="score-avatar" style={{ fontSize: '1.5rem' }}>🤖</div>
+                        </div>
+                    </>
                 )}
 
-                {/* Score bars */}
-                {/* Top Info Bar (Scores & Timer) */}
-                {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'countdown') && (
-                    <div className="top-info-bar">
-                        <div className="score-pill">
-                            <div className="player-score-display" style={{ color: 'var(--score-green)' }}>
-                                {playerScore}
-                            </div>
-                            <div className="vs-divider">VS</div>
-                            <div className="opponent-score-display" style={{ color: 'var(--score-red)' }}>
-                                {opponentScore}
-                            </div>
-                        </div>
+                {/* Simplified Top Info Bar */}
+                {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'gameOver') && (
+                    <div className="top-info-bar" style={{ animation: 'fadeIn 0.2s ease-out' }}>
                         {gameState === 'playing' && (
-                            <div className="game-status-text">ROUND {round}</div>
+                            <div className="game-status-text" style={{ fontSize: '1.5rem', fontWeight: 900 }}>ROUND {round}</div>
                         )}
                         {gameState === 'roundResult' && (
-                            <div className="game-status-text result">
-                                {roundWinner === 'player' ? 'YOU WON!' : roundWinner === 'opponent' ? 'OPPONENT WON' : 'TIE!'}
+                            <div className="game-status-text result" style={{ fontSize: '2.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '4px' }}>
+                                {roundWinner === 'player' ? 'WIN' : roundWinner === 'opponent' ? 'LOSS' : 'TIE'}
+                            </div>
+                        )}
+                        {gameState === 'gameOver' && (
+                            <div className="game-status-text result" style={{ fontSize: '2.5rem', fontWeight: 900, textTransform: 'uppercase', color: gameWinner === 'player' ? 'var(--score-green)' : 'var(--score-red)' }}>
+                                {gameWinner === 'player' ? 'VICTORY' : 'DEFEAT'}
                             </div>
                         )}
                     </div>
@@ -570,20 +590,8 @@ export default function Home() {
 
                     {gameState === 'roundResult' && (
                         <div>
-                            <div className="result-display">
-                                <div className="result-choice">
-                                    <div className="result-emoji">{playerChoice && CHOICE_EMOJIS[playerChoice]}</div>
-                                    <div className="result-label">You</div>
-                                </div>
-                                <div className="vs-text">VS</div>
-                                <div className="result-choice">
-                                    <div className="result-emoji">{opponentChoice && CHOICE_EMOJIS[opponentChoice]}</div>
-                                    <div className="result-label">Opponent</div>
-                                </div>
-                            </div>
-                            <div className={`result-message ${roundWinner === 'player' ? 'win' : roundWinner === 'opponent' ? 'lose' : 'tie'}`}>
-                                {roundWinner === 'player' ? '🎉 You Won!' : roundWinner === 'opponent' ? '😢 You Lost' : '🤝 Tie!'}
-                            </div>
+                            {/* Simplified result display, visuals only as text is now at top */}
+                            {/* Clean display without extra outcome text */}
                         </div>
                     )}
 
