@@ -149,7 +149,12 @@ app.prepare().then(() => {
         socket.on('findMatch', (data) => {
             const userId = socket.userId;
             const imageUrl = data?.imageUrl;
-            console.log('[SERVER_GAME] findMatch request from:', userId, 'with image:', !!imageUrl);
+            console.log('[SERVER_GAME] ═══════════════════════════════════');
+            console.log('[SERVER_GAME] findMatch request from:', userId);
+            console.log('[SERVER_GAME] Data received:', JSON.stringify(data));
+            console.log('[SERVER_GAME] imageUrl extracted:', imageUrl);
+            console.log('[SERVER_GAME] imageUrl type:', typeof imageUrl);
+            console.log('[SERVER_GAME] ═══════════════════════════════════');
 
             // Check if player is already waiting
             if (waitingPlayers.some(p => p.socketId === socket.id || p.userId === userId)) {

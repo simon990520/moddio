@@ -340,6 +340,9 @@ export default function Home() {
         }
 
         console.log('[GAME_ACTION] Emitting findMatch...');
+        console.log('[DEBUG_AVATAR] Full user object:', user);
+        console.log('[DEBUG_AVATAR] user.imageUrl:', user?.imageUrl);
+        console.log('[DEBUG_AVATAR] Sending imageUrl to server:', user?.imageUrl || 'UNDEFINED/NULL');
         socket.emit('findMatch', { imageUrl: user?.imageUrl });
     };
 
