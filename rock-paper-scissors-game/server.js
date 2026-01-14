@@ -1,11 +1,21 @@
+require('dotenv').config();
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
+const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
+const { createClerkClient } = require('@clerk/clerk-sdk-node');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = 3000;
+
+const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -13,11 +23,13 @@ const handle = app.getRequestHandler();
 // Game state
 const waitingPlayers = [];
 const activeRooms = new Map();
+const userSockets = new Map(); // userId -> socketId (Enforce single session)
 
 // Helper functions
-function createPlayer(socketId) {
+function createPlayer(socketId, userId) {
     return {
-        id: Math.random().toString(36).substring(7),
+        id: crypto.randomUUID(),
+        userId,
         socketId,
         score: 0,
         choice: null,
@@ -26,7 +38,7 @@ function createPlayer(socketId) {
 }
 
 function createRoom(player1, player2) {
-    const roomId = Math.random().toString(36).substring(7);
+    const roomId = crypto.randomUUID();
     return {
         id: roomId,
         players: [player1, player2],
@@ -65,23 +77,53 @@ app.prepare().then(() => {
 
     const io = new Server(httpServer, {
         cors: {
-            origin: '*',
+            origin: process.env.NODE_ENV === 'production' ? process.env.PRODUCTION_URL : '*',
             methods: ['GET', 'POST']
         }
     });
 
+    // Security Middleware: Validate Clerk Token
+    io.use(async (socket, next) => {
+        try {
+            const token = socket.handshake.auth.token;
+            if (!token) return next(new Error('Authentication error: Token missing'));
+
+            const session = await clerkClient.sessions.verifySession(
+                socket.handshake.auth.sessionId, // We'll pass this from client
+                token
+            );
+
+            if (!session) return next(new Error('Authentication error: Invalid session'));
+
+            socket.userId = session.userId;
+            next();
+        } catch (err) {
+            console.error('Socket Auth Error:', err.message);
+            next(new Error('Authentication error'));
+        }
+    });
+
     io.on('connection', (socket) => {
-        console.log('Player connected:', socket.id);
+        const userId = socket.userId;
+        console.log('Player connected:', socket.id, 'User:', userId);
+
+        // Enforce Single Session
+        if (userSockets.has(userId)) {
+            const oldSocketId = userSockets.get(userId);
+            io.sockets.sockets.get(oldSocketId)?.disconnect();
+            console.log('Multiple tabs detected. Disconnected old session for:', userId);
+        }
+        userSockets.set(userId, socket.id);
 
         socket.on('findMatch', () => {
             console.log('Player looking for match:', socket.id);
 
             // Check if player is already waiting
-            if (waitingPlayers.some(p => p.socketId === socket.id)) {
+            if (waitingPlayers.some(p => p.socketId === socket.id || p.userId === userId)) {
                 return;
             }
 
-            const player = createPlayer(socket.id);
+            const player = createPlayer(socket.id, userId);
 
             // If someone is waiting, match them
             if (waitingPlayers.length > 0) {
@@ -196,6 +238,11 @@ app.prepare().then(() => {
         socket.on('disconnect', () => {
             console.log('Player disconnected:', socket.id);
 
+            // Handle session map
+            if (userSockets.get(userId) === socket.id) {
+                userSockets.delete(userId);
+            }
+
             // Remove from waiting queue
             const waitingIndex = waitingPlayers.findIndex(p => p.socketId === socket.id);
             if (waitingIndex !== -1) {
@@ -288,12 +335,15 @@ app.prepare().then(() => {
         }
     }
 
-    function endGame(room) {
+    async function endGame(room) {
         const [player1, player2] = room.players;
         room.state = 'gameOver';
 
+        const winner = player1.score > player2.score ? 'player1' : 'player2';
+        const winnerId = winner === 'player1' ? player1.userId : player2.userId;
+
         io.to(player1.socketId).emit('gameOver', {
-            winner: player1.score > player2.score ? 'player' : 'opponent',
+            winner: winner === 'player1' ? 'player' : 'opponent',
             finalScore: {
                 player: player1.score,
                 opponent: player2.score
@@ -301,15 +351,59 @@ app.prepare().then(() => {
         });
 
         io.to(player2.socketId).emit('gameOver', {
-            winner: player2.score > player1.score ? 'player' : 'opponent',
+            winner: winner === 'player2' ? 'player' : 'opponent',
             finalScore: {
                 player: player2.score,
                 opponent: player1.score
             }
         });
 
-        // Don't clean up room immediately - keep it for rematch
-        // Room will be cleaned up if rematch is declined or on disconnect
+        // Background persistence to Supabase
+        try {
+            // 1. Record the match
+            const { error: matchError } = await supabase.from('matches').insert({
+                player1_id: player1.userId,
+                player2_id: player2.userId,
+                winner_id: winnerId,
+                p1_score: player1.score,
+                p2_score: player2.score
+            });
+
+            if (matchError) throw matchError;
+
+            // 2. Update profiles (Atomic increment)
+            // Note: In Supabase/PostgREST we use .rpc() for true atomic increments 
+            // but for this PoC we'll do a simple update or assume the user exists.
+
+            const updateStats = async (userId, isWinner) => {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('total_wins, total_games')
+                    .eq('id', userId)
+                    .single();
+
+                if (profile) {
+                    await supabase.from('profiles').update({
+                        total_wins: isWinner ? profile.total_wins + 1 : profile.total_wins,
+                        total_games: profile.total_games + 1
+                    }).eq('id', userId);
+                } else {
+                    // Create profile if doesn't exist
+                    await supabase.from('profiles').insert({
+                        id: userId,
+                        total_wins: isWinner ? 1 : 0,
+                        total_games: 1
+                    });
+                }
+            };
+
+            await updateStats(player1.userId, winner === 'player1');
+            await updateStats(player2.userId, winner === 'player2');
+
+            console.log('Match recorded successfully in Supabase');
+        } catch (err) {
+            console.error('Error recording match in Supabase:', err.message);
+        }
     }
 
     httpServer

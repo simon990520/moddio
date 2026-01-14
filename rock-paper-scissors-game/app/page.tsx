@@ -2,8 +2,15 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useUser, SignInButton, UserButton, SignedIn, SignedOut } from '@clerk/nextjs';
+import { useUser, SignInButton, UserButton, SignedIn, SignedOut, useAuth } from '@clerk/nextjs';
+import { createClient } from '@supabase/supabase-js';
 import type { Choice, GameState, RoundResult, GameOverData } from '@/lib/types';
+
+// Supabase Read-Only Client (Public ANON key)
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const CHOICE_EMOJIS = {
     rock: '✊',
@@ -49,6 +56,31 @@ export default function Home() {
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
+    // Leaderboard State
+    const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
+    const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+    const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
+
+    const fetchLeaderboard = async () => {
+        setLoadingLeaderboard(true);
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('total_wins', { ascending: false })
+            .limit(10);
+
+        if (!error && data) {
+            setLeaderboardData(data);
+        }
+        setLoadingLeaderboard(false);
+    };
+
+    useEffect(() => {
+        if (showLeaderboard) {
+            fetchLeaderboard();
+        }
+    }, [showLeaderboard]);
+
     // Infinite Hue Cycle Background (60fps)
     const hueRef = useRef(Math.floor(Math.random() * 360));
 
@@ -75,95 +107,111 @@ export default function Home() {
         return () => cancelAnimationFrame(frameId);
     }, []);
 
+    const { getToken, sessionId } = useAuth();
+
     useEffect(() => {
-        const socketIo = io('http://localhost:3000');
-        setSocket(socketIo);
+        if (!isSignedIn || !sessionId) return;
 
-        socketIo.on('waiting', () => {
-            setGameState('waiting');
-        });
+        let socketIo: Socket;
 
-        socketIo.on('matchFound', () => {
-            setGameState('countdown');
-            setPlayerScore(0);
-            setOpponentScore(0);
-            setRound(1);
-            setRematchRequested(false);
-            setRematchStatus('');
-        });
+        const connectSocket = async () => {
+            const token = await getToken();
+            const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
-        socketIo.on('countdown', (count: number) => {
-            setCountdown(count);
-            setGameState('countdown');
-        });
+            socketIo = io(socketUrl, {
+                auth: { token, sessionId }
+            });
 
-        socketIo.on('roundStart', (roundNum: number) => {
-            setRound(roundNum);
-            setGameState('playing');
-            setChoiceMade(false);
-            setPlayerChoice(null);
-            setOpponentChoice(null);
-            setRoundWinner(null);
-            setShowCollision(false);
-        });
+            setSocket(socketIo);
 
-        socketIo.on('roundResult', (result: RoundResult) => {
-            setPlayerChoice(result.playerChoice);
-            setOpponentChoice(result.opponentChoice);
-            setRoundWinner(result.winner);
-            setPlayerScore(result.playerScore);
-            setOpponentScore(result.opponentScore);
-            setGameState('roundResult');
+            socketIo.on('waiting', () => {
+                setGameState('waiting');
+            });
 
-            // Trigger collision animation
-            setShowCollision(true);
-            setTimeout(() => setShowCollision(false), 600);
-        });
-
-        socketIo.on('gameOver', (data: GameOverData) => {
-            setGameWinner(data.winner);
-            setGameState('gameOver');
-        });
-
-        socketIo.on('rematchRequested', () => {
-            setRematchStatus('Opponent wants a rematch!');
-        });
-
-        socketIo.on('rematchAccepted', () => {
-            setRematchStatus('Rematch accepted! Starting new game...');
-            setTimeout(() => {
+            socketIo.on('matchFound', () => {
                 setGameState('countdown');
                 setPlayerScore(0);
                 setOpponentScore(0);
                 setRound(1);
+                setRematchRequested(false);
+                setRematchStatus('');
+            });
+
+            socketIo.on('countdown', (count: number) => {
+                setCountdown(count);
+                setGameState('countdown');
+            });
+
+            socketIo.on('roundStart', (roundNum: number) => {
+                setRound(roundNum);
+                setGameState('playing');
+                setChoiceMade(false);
                 setPlayerChoice(null);
                 setOpponentChoice(null);
                 setRoundWinner(null);
-                setGameWinner(null);
-                setChoiceMade(false);
+                setShowCollision(false);
+            });
+
+            socketIo.on('roundResult', (result: RoundResult) => {
+                setPlayerChoice(result.playerChoice);
+                setOpponentChoice(result.opponentChoice);
+                setRoundWinner(result.winner);
+                setPlayerScore(result.playerScore);
+                setOpponentScore(result.opponentScore);
+                setGameState('roundResult');
+
+                // Trigger collision animation
+                setShowCollision(true);
+                setTimeout(() => setShowCollision(false), 600);
+            });
+
+            socketIo.on('gameOver', (data: GameOverData) => {
+                setGameWinner(data.winner);
+                setGameState('gameOver');
+            });
+
+            socketIo.on('rematchRequested', () => {
+                setRematchStatus('Opponent wants a rematch!');
+            });
+
+            socketIo.on('rematchAccepted', () => {
+                setRematchStatus('Rematch accepted! Starting new game...');
+                setTimeout(() => {
+                    setGameState('countdown');
+                    setPlayerScore(0);
+                    setOpponentScore(0);
+                    setRound(1);
+                    setPlayerChoice(null);
+                    setOpponentChoice(null);
+                    setRoundWinner(null);
+                    setGameWinner(null);
+                    setChoiceMade(false);
+                    setRematchRequested(false);
+                    setRematchStatus('');
+                }, 2000);
+            });
+
+            socketIo.on('rematchDeclined', () => {
+                setRematchStatus('Opponent declined the rematch');
+                setTimeout(() => {
+                    setGameState('lobby');
+                }, 2000);
+            });
+
+            socketIo.on('opponentDisconnected', () => {
+                alert('Opponent disconnected!');
+                setGameState('lobby');
                 setRematchRequested(false);
                 setRematchStatus('');
-            }, 2000);
-        });
+            });
+        };
 
-        socketIo.on('rematchDeclined', () => {
-            setRematchStatus('Opponent declined the rematch');
-            setTimeout(() => {
-                setGameState('lobby');
-            }, 2000);
-        });
-
-        socketIo.on('opponentDisconnected', () => {
-            alert('Opponent disconnected!');
-            setGameState('lobby');
-            setRematchRequested(false);
-            setRematchStatus('');
-        });
+        connectSocket();
 
         return () => {
-            socketIo.disconnect();
+            if (socketIo) socketIo.disconnect();
         };
-    }, []);
+    }, [isSignedIn, sessionId, getToken]);
 
     const handleFindMatch = () => {
         if (socket && isSignedIn) {
@@ -218,16 +266,52 @@ export default function Home() {
     return (
         <>
             <div className={`game-container ${(gameState === 'roundResult' && roundWinner === 'player') || (gameState === 'gameOver' && gameWinner === 'player')
-                    ? 'victory-reward' : ''
+                ? 'victory-reward' : ''
                 } ${(gameState === 'roundResult' && roundWinner === 'opponent') || (gameState === 'gameOver' && gameWinner === 'opponent')
                     ? 'shake' : ''
                 }`}>
-                {/* Header with User Profile */}
-                <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000 }}>
+                {/* Header with User Profile and Leaderboard Toggle */}
+                <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <button
+                        className="leaderboard-toggle"
+                        onClick={() => setShowLeaderboard(true)}
+                    >
+                        🏆 Rankings
+                    </button>
                     <SignedIn>
-                        <UserButton />
+                        <UserButton afterSignOutUrl="/" />
                     </SignedIn>
                 </div>
+
+                {/* Leaderboard Overlay */}
+                {showLeaderboard && (
+                    <div className="leaderboard-overlay">
+                        <div className="leaderboard-header">
+                            <h2 className="leaderboard-title">HALL OF FAME</h2>
+                            <button className="close-btn" onClick={() => setShowLeaderboard(false)}>&times;</button>
+                        </div>
+                        <div className="leaderboard-list">
+                            {loadingLeaderboard ? (
+                                <div style={{ textAlign: 'center', padding: '40px' }}>Loading legends...</div>
+                            ) : leaderboardData.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px', opacity: 0.5 }}>No legends yet. Start playing!</div>
+                            ) : (
+                                leaderboardData.map((player, index) => (
+                                    <div key={player.id} className="leaderboard-item">
+                                        <div className={`rank-badge ${index < 3 ? `rank-${index + 1}` : ''}`}>
+                                            {index + 1}
+                                        </div>
+                                        <div className="player-info">
+                                            <div className="player-name">{player.username || `Player ${player.id.substring(0, 5)}`}</div>
+                                            <div className="player-stats">{player.total_games} games played</div>
+                                        </div>
+                                        <div className="win-count">{player.total_wins} W</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Score bars */}
                 <div className="score-container">
