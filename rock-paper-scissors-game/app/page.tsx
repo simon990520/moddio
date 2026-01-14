@@ -69,6 +69,10 @@ export default function Home() {
     const [timeFilter, setTimeFilter] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
     const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
 
+    // Audio State
+    const [isMuted, setIsMuted] = useState<boolean>(false);
+    const [volume, setVolume] = useState<number>(0.5); // 0.0 to 1.0
+
     const fetchLeaderboard = async () => {
         setLoadingLeaderboard(true);
         const { data, error } = await supabase
@@ -88,6 +92,32 @@ export default function Home() {
             fetchLeaderboard();
         }
     }, [showLeaderboard]);
+
+    // Centralized Audio Manager
+    const playSound = (soundPath: string, volumeOverride?: number) => {
+        if (isMuted) return;
+        try {
+            const audio = new Audio(soundPath);
+            audio.volume = volumeOverride !== undefined ? volumeOverride : volume;
+            audio.play().catch(err => console.warn('[AUDIO] Play failed:', err));
+        } catch (error) {
+            console.error('[AUDIO] Error playing sound:', error);
+        }
+    };
+
+    const playMusic = (soundPath: string, loop: boolean = true) => {
+        if (isMuted) return;
+        try {
+            const audio = new Audio(soundPath);
+            audio.volume = volume * 0.6; // Background music at 60% of main volume
+            audio.loop = loop;
+            audio.play().catch(err => console.warn('[AUDIO] Music play failed:', err));
+            return audio;
+        } catch (error) {
+            console.error('[AUDIO] Error playing music:', error);
+            return null;
+        }
+    };
 
     // Infinite Hue Cycle Background (60fps)
     const hueRef = useRef(Math.floor(Math.random() * 360));
@@ -213,6 +243,7 @@ export default function Home() {
             socketIo.on('countdown', (count: number) => {
                 setCountdown(count);
                 setGameState('countdown');
+                playSound('/sounds/sfx/countdown.mp3');
             });
 
             socketIo.on('roundStart', (roundNum: number) => {
@@ -223,6 +254,7 @@ export default function Home() {
                 setOpponentChoice(null);
                 setRoundWinner(null);
                 setShowCollision(false);
+                playSound('/sounds/sfx/fight.mp3');
             });
 
             socketIo.on('roundResult', (result: RoundResult) => {
@@ -236,11 +268,34 @@ export default function Home() {
                 // Trigger collision animation
                 setShowCollision(true);
                 setTimeout(() => setShowCollision(false), 600);
+
+                // Play collision sound
+                playSound('/sounds/sfx/collision.mp3');
+
+                // Play result sound based on winner
+                setTimeout(() => {
+                    if (result.winner === 'player') {
+                        playSound('/sounds/sfx/win_round.mp3');
+                    } else if (result.winner === 'opponent') {
+                        playSound('/sounds/sfx/lose_round.mp3');
+                    } else {
+                        playSound('/sounds/sfx/tie.mp3');
+                    }
+                }, 400);
             });
 
             socketIo.on('gameOver', (data: GameOverData) => {
                 setGameWinner(data.winner);
                 setGameState('gameOver');
+
+                // Play final game voice
+                setTimeout(() => {
+                    if (data.winner === 'player') {
+                        playSound('/sounds/voices/announcer/win_game.mp3');
+                    } else {
+                        playSound('/sounds/voices/announcer/lose_game.mp3');
+                    }
+                }, 500);
             });
 
             socketIo.on('rematchRequested', () => {
@@ -343,6 +398,7 @@ export default function Home() {
         console.log('[DEBUG_AVATAR] Full user object:', user);
         console.log('[DEBUG_AVATAR] user.imageUrl:', user?.imageUrl);
         console.log('[DEBUG_AVATAR] Sending imageUrl to server:', user?.imageUrl || 'UNDEFINED/NULL');
+        playSound('/sounds/sfx/click.mp3');
         socket.emit('findMatch', { imageUrl: user?.imageUrl });
     };
 
@@ -350,12 +406,14 @@ export default function Home() {
         if (socket && !choiceMade) {
             setChoiceMade(true);
             setPlayerChoice(choice);
+            playSound('/sounds/sfx/click.mp3');
             socket.emit('makeChoice', choice);
         }
     };
 
     const handleRequestRematch = () => {
         if (socket) {
+            playSound('/sounds/sfx/click.mp3');
             socket.emit('requestRematch');
             setRematchRequested(true);
             setRematchStatus('Waiting for opponent response...');
@@ -364,6 +422,7 @@ export default function Home() {
 
     const handleRematchResponse = (accepted: boolean) => {
         if (socket) {
+            playSound('/sounds/sfx/click.mp3');
             socket.emit('rematchResponse', accepted);
             if (accepted) {
                 setRematchStatus('Rematch accepted! Starting new game...');
