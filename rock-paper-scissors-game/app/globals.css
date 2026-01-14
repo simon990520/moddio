@@ -436,8 +436,8 @@ body {
 }
 
 .fill-left {
-  background: var(--score-blue);
-  box-shadow: 0 0 20px var(--score-blue);
+  background: var(--score-green);
+  box-shadow: 0 0 20px var(--score-green);
 }
 
 .fill-right {

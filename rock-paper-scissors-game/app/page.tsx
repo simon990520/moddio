@@ -374,7 +374,7 @@ export default function Home() {
     };
 
     const handlePlayAgain = () => {
-        setGameState('lobby');
+        setGameState('waiting');
         setPlayerScore(0);
         setOpponentScore(0);
         setRound(1);
@@ -386,6 +386,12 @@ export default function Home() {
         setOpponentImageUrl(null);
         setRematchRequested(false);
         setRematchStatus('');
+
+        // Directly enter queue
+        if (socket) {
+            console.log('[GAME_ACTION] Start journey for new match...');
+            socket.emit('findMatch', { imageUrl: user?.imageUrl });
+        }
     };
 
     return (
@@ -496,7 +502,7 @@ export default function Home() {
                                 <div className="score-fill fill-left" style={{ height: `${(playerScore / 3) * 100}%` }}></div>
                             </div>
                             <div className="score-avatar">
-                                {user?.imageUrl ? <img src={user.imageUrl} className="avatar-img" alt="You" /> : '😎'}
+                                {user?.imageUrl ? <img src={user.imageUrl} className="avatar-img" alt="You" /> : <span style={{ fontSize: '1.5rem' }}>😎</span>}
                             </div>
                         </div>
                         <div className="score-bar score-bar-right">
@@ -603,7 +609,7 @@ export default function Home() {
                     {gameState === 'gameOver' && (
                         <div style={{ textAlign: 'center' }}>
                             {/* Intuitive and simplified GameOver screen */}
-                            <div style={{ marginTop: '22vh' }}>
+                            <div style={{ marginTop: '25vh' }}>
                                 {/* Rematch System */}
                                 <div className="rematch-card">
                                     <div className="game-status-text result" style={{
