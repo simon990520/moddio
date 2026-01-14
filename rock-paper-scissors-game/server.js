@@ -8,7 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { createClerkClient } = require('@clerk/clerk-sdk-node');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = '0.0.0.0';
 const port = 3000;
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
@@ -88,24 +88,28 @@ app.prepare().then(() => {
             const token = socket.handshake.auth.token;
             if (!token) return next(new Error('Authentication error: Token missing'));
 
-            const session = await clerkClient.sessions.verifySession(
-                socket.handshake.auth.sessionId, // We'll pass this from client
-                token
-            );
+            // Use verifyToken for faster, more robust JWT verification
+            // This doesn't poll Clerk's API, it verifies the signature locally
+            const payload = await clerkClient.verifyToken(token);
 
-            if (!session) return next(new Error('Authentication error: Invalid session'));
+            if (!payload) {
+                console.error('[SERVER_AUTH] Token verification failed for socket:', socket.id);
+                return next(new Error('Authentication error: Invalid token'));
+            }
 
-            socket.userId = session.userId;
+            // The userId is in the 'sub' field of the JWT
+            socket.userId = payload.sub;
+            console.log('[SERVER_AUTH] User authenticated via JWT:', socket.userId);
             next();
         } catch (err) {
-            console.error('Socket Auth Error:', err.message);
+            console.error('[SERVER_AUTH] Socket Auth Error:', err.message);
             next(new Error('Authentication error'));
         }
     });
 
     io.on('connection', (socket) => {
         const userId = socket.userId;
-        console.log('Player connected:', socket.id, 'User:', userId);
+        console.log('[SERVER_INFO] Player connected:', socket.id, 'User:', userId);
 
         // Enforce Single Session
         if (userSockets.has(userId)) {
@@ -115,19 +119,62 @@ app.prepare().then(() => {
         }
         userSockets.set(userId, socket.id);
 
+        socket.on('updateProfile', async (data) => {
+            const { username, birthDate } = data;
+            console.log('[SERVER_AUTH] Updating profile for:', userId, { username, birthDate });
+
+            try {
+                const { error } = await supabase
+                    .from('profiles')
+                    .upsert({
+                        id: userId,
+                        username,
+                        birth_date: birthDate,
+                        updated_at: new Date().toISOString()
+                    });
+
+                if (error) {
+                    console.error('[SERVER_DB] Profile update error:', error.message);
+                    socket.emit('profileUpdateError', error.message);
+                } else {
+                    socket.emit('profileUpdated');
+                }
+            } catch (err) {
+                console.error('[SERVER_DB] Profile update exception:', err.message);
+                socket.emit('profileUpdateError', 'Internal Error');
+            }
+        });
+
         socket.on('findMatch', () => {
-            console.log('Player looking for match:', socket.id);
+            console.log('[SERVER_GAME] findMatch received from:', socket.id, 'User:', userId);
 
             // Check if player is already waiting
             if (waitingPlayers.some(p => p.socketId === socket.id || p.userId === userId)) {
+                console.warn('[SERVER_GAME] Player already in queue or playing:', userId);
                 return;
             }
 
+            // Check if player was in a finished game (leaving for new match)
+            if (activeRooms.has(socket.id)) {
+                const room = activeRooms.get(socket.id);
+                if (room.state === 'gameOver') {
+                    const opponent = room.players.find(p => p.socketId !== socket.id);
+                    if (opponent) {
+                        io.to(opponent.socketId).emit('opponentLeft');
+                        // Clean up room references for the opponent so they're free to match too
+                        activeRooms.delete(opponent.socketId);
+                    }
+                    activeRooms.delete(socket.id);
+                }
+            }
+
             const player = createPlayer(socket.id, userId);
+            console.log('[SERVER_GAME] Created player object for:', userId);
 
             // If someone is waiting, match them
             if (waitingPlayers.length > 0) {
                 const opponent = waitingPlayers.shift();
+                console.log('[SERVER_GAME] MATCH FOUND! Matching with opponent:', opponent.socketId);
                 const room = createRoom(player, opponent);
 
                 activeRooms.set(socket.id, room);
@@ -136,6 +183,8 @@ app.prepare().then(() => {
                 // Join socket room
                 socket.join(room.id);
                 io.sockets.sockets.get(opponent.socketId)?.join(room.id);
+
+                console.log('[SERVER_GAME] Unified Room joined:', room.id);
 
                 // Notify both players
                 socket.emit('matchFound', {
@@ -158,6 +207,7 @@ app.prepare().then(() => {
             } else {
                 // Add to waiting queue
                 waitingPlayers.push(player);
+                console.log('[SERVER_GAME] Added to queue. waitingPlayers size:', waitingPlayers.length);
                 socket.emit('waiting');
             }
         });

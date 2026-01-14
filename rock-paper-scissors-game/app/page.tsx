@@ -56,6 +56,11 @@ export default function Home() {
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
+    // Onboarding State
+    const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+    const [username, setUsername] = useState('');
+    const [birthDate, setBirthDate] = useState('');
+
     // Leaderboard State
     const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
     const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
@@ -109,6 +114,38 @@ export default function Home() {
 
     const { getToken, sessionId } = useAuth();
 
+    // Check Profile on Load
+    useEffect(() => {
+        if (!isSignedIn || !user) return;
+
+        const checkProfile = async () => {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+
+            // If profile missing or incomplete (no username or birth_date)
+            if (error || !data || !data.username || !data.birth_date) {
+                setShowOnboarding(true);
+                if (data?.username) setUsername(data.username);
+                // Don't set birthDate if it's null
+            }
+        };
+
+        checkProfile();
+    }, [isSignedIn, user]);
+
+    const handleSaveProfile = () => {
+        if (!username.trim() || !birthDate) {
+            alert('Please fill in all fields');
+            return;
+        }
+        if (socket) {
+            socket.emit('updateProfile', { username, birthDate });
+        }
+    };
+
     useEffect(() => {
         if (!isSignedIn || !sessionId) return;
 
@@ -116,7 +153,11 @@ export default function Home() {
 
         const connectSocket = async () => {
             const token = await getToken();
-            const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+            console.log('[SOCKET_INFO] Initializing connection...', { hasToken: !!token, sessionId });
+
+            // Dynamically determine the socket URL (defaults to current origin for ngrok/production)
+            const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+            console.log('[SOCKET_INFO] Socket URL:', socketUrl);
 
             socketIo = io(socketUrl, {
                 auth: { token, sessionId }
@@ -124,7 +165,28 @@ export default function Home() {
 
             setSocket(socketIo);
 
+            socketIo.on('connect', () => {
+                console.log('%c[SOCKET_INFO] CONNECTED SUCCESSFULLY!', 'color: #00ff00; font-weight: bold;');
+                console.log('%c[TIP] To hide noisy extension messages, type "-content.js" in the console Filter box.', 'color: #888; font-style: italic;');
+            });
+
+            socketIo.on('disconnect', (reason) => {
+                console.warn('[SOCKET_INFO] Disconnected:', reason);
+            });
+
+            socketIo.on('connect_error', async (error) => {
+                console.error('%c[SOCKET_INFO] CONNECTION ERROR:', 'color: #ff0000; font-weight: bold;', error.message);
+
+                if (error.message === 'Authentication error' || error.message === 'Invalid token') {
+                    console.log('[SOCKET_INFO] Retrying with fresh token...');
+                    const newToken = await getToken();
+                    socketIo.auth = { token: newToken, sessionId };
+                    socketIo.connect();
+                }
+            });
+
             socketIo.on('waiting', () => {
+                console.log('[GAME_STATUS] Waiting in queue...');
                 setGameState('waiting');
             });
 
@@ -198,11 +260,25 @@ export default function Home() {
                 }, 2000);
             });
 
+            socketIo.on('profileUpdated', () => {
+                setShowOnboarding(false);
+                alert('Profile updated successfully!');
+            });
+
+            socketIo.on('profileUpdateError', (msg: string) => {
+                alert('Error updating profile: ' + msg);
+            });
+
             socketIo.on('opponentDisconnected', () => {
                 alert('Opponent disconnected!');
                 setGameState('lobby');
                 setRematchRequested(false);
                 setRematchStatus('');
+            });
+
+            socketIo.on('opponentLeft', () => {
+                setRematchStatus('Opponent left for a new game.');
+                setRematchRequested(false);
             });
         };
 
@@ -214,9 +290,22 @@ export default function Home() {
     }, [isSignedIn, sessionId, getToken]);
 
     const handleFindMatch = () => {
-        if (socket && isSignedIn) {
-            socket.emit('findMatch');
+        console.log('[GAME_ACTION] Start button clicked');
+        if (!isSignedIn) {
+            console.warn('[GAME_ACTION] User not signed in');
+            return;
         }
+        if (!socket) {
+            console.error('[GAME_ACTION] Socket not initialized');
+            return;
+        }
+        if (!socket.connected) {
+            console.error('[GAME_ACTION] Socket disconnected');
+            return;
+        }
+
+        console.log('[GAME_ACTION] Emitting findMatch...');
+        socket.emit('findMatch');
     };
 
     const handleChoice = (choice: Choice) => {
@@ -314,29 +403,28 @@ export default function Home() {
                 )}
 
                 {/* Score bars */}
-                <div className="score-container">
-                    {/* Left score bar (Player - Red) */}
-                    <div className="score-bar left">
-                        <div
-                            className="score-fill red"
-                            style={{ height: `${(playerScore / 3) * 100}%` }}
-                        />
+                {/* Top Info Bar (Scores & Timer) */}
+                {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'countdown') && (
+                    <div className="top-info-bar">
+                        <div className="score-pill">
+                            <div className="player-score-display" style={{ color: 'var(--score-green)' }}>
+                                {playerScore}
+                            </div>
+                            <div className="vs-divider">VS</div>
+                            <div className="opponent-score-display" style={{ color: 'var(--score-red)' }}>
+                                {opponentScore}
+                            </div>
+                        </div>
+                        {gameState === 'playing' && (
+                            <div className="game-status-text">ROUND {round}</div>
+                        )}
+                        {gameState === 'roundResult' && (
+                            <div className="game-status-text result">
+                                {roundWinner === 'player' ? 'YOU WON!' : roundWinner === 'opponent' ? 'OPPONENT WON' : 'TIE!'}
+                            </div>
+                        )}
                     </div>
-
-                    {/* Right score bar (Opponent - Blue) */}
-                    <div className="score-bar right">
-                        <div
-                            className="score-fill blue"
-                            style={{ height: `${(opponentScore / 3) * 100}%` }}
-                        />
-                    </div>
-
-                    {/* Score icons */}
-                    <div className="score-icon top-left" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                    <div className="score-icon bottom-left" style={{ color: 'var(--score-red)' }}>🔴</div>
-                    <div className="score-icon top-right" style={{ color: 'var(--score-blue)' }}>🔵</div>
-                    <div className="score-icon bottom-right" style={{ color: 'var(--score-orange)' }}>🟠</div>
-                </div>
+                )}
 
                 {/* Hands visual with collision animation */}
                 {(gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult') && (
@@ -350,10 +438,10 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* Timer */}
-                {(gameState === 'playing' || gameState === 'roundResult') && (
-                    <div className="timer">
-                        {gameState === 'playing' ? `0:${String(round).padStart(2, '0')}` : `Score: ${playerScore}-${opponentScore}`}
+                {/* Countdown Overlay */}
+                {gameState === 'countdown' && (
+                    <div className="countdown-overlay">
+                        <div className="countdown">{countdown}</div>
                     </div>
                 )}
 
@@ -501,6 +589,38 @@ export default function Home() {
                     </div>
                 )}
             </div>
+
+            {/* Onboarding Modal */}
+            {showOnboarding && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        <h2 className="modal-title">WELCOME PLAYER</h2>
+                        <div className="input-group">
+                            <label className="input-label">Choose your fighter name</label>
+                            <input
+                                type="text"
+                                className="modal-input"
+                                placeholder="Username"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                maxLength={15}
+                            />
+                        </div>
+                        <div className="input-group">
+                            <label className="input-label">Date of Birth</label>
+                            <input
+                                type="date"
+                                className="modal-input"
+                                value={birthDate}
+                                onChange={(e) => setBirthDate(e.target.value)}
+                            />
+                        </div>
+                        <button className="btn-enter-arena" onClick={handleSaveProfile}>
+                            ENTER ARENA
+                        </button>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
