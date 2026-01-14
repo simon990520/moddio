@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useUser, SignInButton, UserButton, SignedIn, SignedOut, useAuth } from '@clerk/nextjs';
 import { createClient } from '@supabase/supabase-js';
+import confetti from 'canvas-confetti';
 import type { Choice, GameState, RoundResult, GameOverData } from '@/lib/types';
 
 // Supabase Read-Only Client (Public ANON key)
@@ -262,7 +263,31 @@ export default function Home() {
 
             socketIo.on('profileUpdated', () => {
                 setShowOnboarding(false);
-                alert('Profile updated successfully!');
+                // Trigger Confetti Celebration
+                const duration = 3000;
+                const end = Date.now() + duration;
+
+                const frame = () => {
+                    confetti({
+                        particleCount: 5,
+                        angle: 60,
+                        spread: 55,
+                        origin: { x: 0 },
+                        colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00']
+                    });
+                    confetti({
+                        particleCount: 5,
+                        angle: 120,
+                        spread: 55,
+                        origin: { x: 1 },
+                        colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00']
+                    });
+
+                    if (Date.now() < end) {
+                        requestAnimationFrame(frame);
+                    }
+                };
+                frame();
             });
 
             socketIo.on('profileUpdateError', (msg: string) => {
