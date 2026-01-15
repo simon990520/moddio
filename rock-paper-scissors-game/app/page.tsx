@@ -243,7 +243,9 @@ export default function Home() {
             socketIo.on('countdown', (count: number) => {
                 setCountdown(count);
                 setGameState('countdown');
-                playSound('/sounds/sfx/countdown.mp3');
+                if (count === 1) {
+                    playSound('/sounds/sfx/countdown.mp3');
+                }
             });
 
             socketIo.on('roundStart', (roundNum: number) => {
