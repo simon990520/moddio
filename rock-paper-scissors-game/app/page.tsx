@@ -133,24 +133,39 @@ export default function Home() {
         }
 
         const playTheme = (path: string) => {
-            if (musicRef.current?.src.includes(path)) return; // Already playing
+            // Check if we are already trying to play this exact file
+            const currentSrc = musicRef.current?.src || '';
+            if (currentSrc.includes(path)) {
+                // If it's already the current ref but it's paused (due to autoplay block), try playing again
+                if (musicRef.current?.paused) {
+                    musicRef.current.play().catch(() => { });
+                }
+                return;
+            }
 
             if (musicRef.current) {
                 musicRef.current.pause();
             }
 
             const audio = new Audio(path);
-            audio.volume = volume * 0.4; // Music slightly quieter
+            audio.volume = volume * 0.4;
             audio.loop = true;
-            audio.play().catch(e => {
-                console.warn('[AUDIO] Autoplay blocked, waiting for interaction:', e);
-                // Try again on first user interaction if blocked
-                const unlock = () => {
-                    audio.play().catch(() => { });
-                    window.removeEventListener('click', unlock);
-                };
-                window.addEventListener('click', unlock);
-            });
+
+            const startAttempt = () => {
+                audio.play().catch(e => {
+                    console.warn('[AUDIO] Autoplay standby for:', path);
+                    // Global interaction listener to unlock this specific audio
+                    const unlock = () => {
+                        audio.play().catch(() => { });
+                        window.removeEventListener('mousedown', unlock);
+                        window.removeEventListener('touchstart', unlock);
+                    };
+                    window.addEventListener('mousedown', unlock);
+                    window.addEventListener('touchstart', unlock);
+                });
+            };
+
+            startAttempt();
             musicRef.current = audio;
         };
 
