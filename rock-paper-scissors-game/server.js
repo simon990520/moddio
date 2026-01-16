@@ -9,7 +9,7 @@ const { createClerkClient } = require('@clerk/clerk-sdk-node');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 const supabase = createClient(

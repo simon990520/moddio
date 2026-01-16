@@ -243,7 +243,7 @@ export default function Home() {
             socketIo.on('countdown', (count: number) => {
                 setCountdown(count);
                 setGameState('countdown');
-                if (count === 1) {
+                if (count === 3) {
                     playSound('/sounds/sfx/countdown.mp3');
                 }
             });
