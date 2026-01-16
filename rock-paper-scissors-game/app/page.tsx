@@ -312,32 +312,16 @@ export default function Home() {
     };
 
     const handlePurchase = async (type: 'coins' | 'gems', amount: number) => {
-        if (!isSignedIn || !user) {
-            console.error('[ECONOMY] Purchase failed: User not signed in');
+        if (!isSignedIn || !user || !socket) {
+            console.error('[ECONOMY] Purchase failed: User not signed in or socket not connected');
             return;
         }
 
         playSound('/sounds/sfx/click.mp3');
 
-        // Functional updates to avoid stale state issues
-        let currentVal = type === 'coins' ? coins : gems;
-        const newValue = currentVal + amount;
-
-        console.log(`[ECONOMY] Attempting to update ${type}: ${currentVal} -> ${newValue}`);
-
-        const { error } = await supabase
-            .from('profiles')
-            .update({ [type]: newValue })
-            .eq('id', user.id);
-
-        if (!error) {
-            if (type === 'coins') setCoins(newValue);
-            else setGems(newValue);
-            console.log(`[ECONOMY] SUCCESS: Purchased ${amount} ${type}. New total: ${newValue}`);
-        } else {
-            console.error('[ECONOMY] DB UPDATE FAILED:', error);
-            alert(`Error updating balance: ${error.message}. Did you run the migration_economy.sql script?`);
-        }
+        // NEW: Delegate to backend socket for secure SERVICE_ROLE update
+        console.log(`[ECONOMY] Emitting purchase to server: ${type} +${amount}`);
+        socket.emit('purchase', { type, amount });
     };
 
     useEffect(() => {
@@ -362,6 +346,17 @@ export default function Home() {
             socketIo.on('connect', () => {
                 console.log('%c[SOCKET_INFO] CONNECTED SUCCESSFULLY!', 'color: #00ff00; font-weight: bold;');
                 console.log('%c[TIP] To hide noisy extension messages, type "-content.js" in the console Filter box.', 'color: #888; font-style: italic;');
+            });
+
+            socketIo.on('purchaseSuccess', ({ type, newValue }: { type: 'coins' | 'gems', newValue: number }) => {
+                if (type === 'coins') setCoins(newValue);
+                else setGems(newValue);
+                console.log(`[ECONOMY] Purchase confirmed by server: ${type} = ${newValue}`);
+            });
+
+            socketIo.on('purchaseError', (error: string) => {
+                console.error('[ECONOMY] Server purchase error:', error);
+                alert(`Error en la compra: ${error}. Por favor, verifica tu conexión o base de datos.`);
             });
 
             socketIo.on('disconnect', (reason) => {

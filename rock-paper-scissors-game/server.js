@@ -146,6 +146,46 @@ app.prepare().then(() => {
             }
         });
 
+        socket.on('purchase', async (data) => {
+            const { type, amount } = data;
+            const userId = socket.userId;
+            console.log('[SERVER_ECONOMY] Purchase request:', { userId, type, amount });
+
+            try {
+                // Get current balance FIRST to ensure consistency
+                const { data: profile, error: fetchError } = await supabase
+                    .from('profiles')
+                    .select('coins, gems')
+                    .eq('id', userId)
+                    .single();
+
+                if (fetchError) {
+                    console.error('[SERVER_DB] Fetch balance error:', fetchError.message);
+                    socket.emit('purchaseError', 'User profile not found');
+                    return;
+                }
+
+                const currentAmount = type === 'coins' ? (profile.coins || 0) : (profile.gems || 0);
+                const newValue = parseInt(currentAmount) + parseInt(amount);
+
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .update({ [type]: newValue })
+                    .eq('id', userId);
+
+                if (updateError) {
+                    console.error('[SERVER_DB] Update balance error:', updateError.message);
+                    socket.emit('purchaseError', updateError.message);
+                } else {
+                    console.log(`[SERVER_ECONOMY] SUCCESS: Purchased ${amount} ${type} for ${userId}. New total: ${newValue}`);
+                    socket.emit('purchaseSuccess', { type, newValue });
+                }
+            } catch (err) {
+                console.error('[SERVER_DB] Purchase exception:', err.message);
+                socket.emit('purchaseError', 'Internal Economy Error');
+            }
+        });
+
         socket.on('findMatch', (data) => {
             const userId = socket.userId;
             const imageUrl = data?.imageUrl;
