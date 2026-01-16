@@ -564,7 +564,7 @@ export default function Home() {
     return (
         <>
             {/* Header with User Profile, Economy and Settings - Outside Shake Container */}
-            <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
+            <div className="main-header">
                 {/* Settings Toggle (Leftmost) */}
                 <button
                     className="icon-btn settings-btn"

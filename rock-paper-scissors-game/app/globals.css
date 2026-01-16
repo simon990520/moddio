@@ -1173,6 +1173,53 @@ body {
   border: 2px solid white;
 }
 
+/* Main Header */
+.main-header {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+@media (max-width: 480px) {
+  .main-header {
+    top: 15px;
+    right: 15px;
+    gap: 8px;
+    width: calc(100% - 30px);
+    justify-content: flex-end;
+  }
+
+  .economy-item {
+    padding: 4px 10px;
+    gap: 4px;
+  }
+
+  .economy-icon {
+    font-size: 1rem;
+  }
+
+  .economy-value {
+    font-size: 0.85rem;
+  }
+
+  .leaderboard-toggle {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+}
+
 .volume-slider::-moz-range-thumb {
   width: 18px;
   height: 18px;
