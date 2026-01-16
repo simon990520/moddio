@@ -58,6 +58,9 @@ export default function Home() {
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
+    // Audio & Music State
+    const musicRef = useRef<HTMLAudioElement | null>(null);
+
     // Onboarding State
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
     const [username, setUsername] = useState('');
@@ -118,6 +121,37 @@ export default function Home() {
             return null;
         }
     };
+
+    // Background Music Controller
+    useEffect(() => {
+        if (isMuted) {
+            if (musicRef.current) {
+                musicRef.current.pause();
+                musicRef.current = null;
+            }
+            return;
+        }
+
+        const playTheme = (path: string) => {
+            if (musicRef.current?.src.includes(path)) return; // Already playing
+
+            if (musicRef.current) {
+                musicRef.current.pause();
+            }
+
+            const audio = new Audio(path);
+            audio.volume = volume * 0.4; // Music slightly quieter
+            audio.loop = true;
+            audio.play().catch(e => console.warn('[AUDIO] Music failed:', e));
+            musicRef.current = audio;
+        };
+
+        if (gameState === 'lobby' || gameState === 'waiting') {
+            playTheme('/sounds/music/menu_theme.mp3');
+        } else if (gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult' || gameState === 'gameOver') {
+            playTheme('/sounds/music/battle_theme.mp3');
+        }
+    }, [gameState, isMuted, volume]);
 
     // Infinite Hue Cycle Background (60fps)
     const hueRef = useRef(Math.floor(Math.random() * 360));
@@ -274,6 +308,11 @@ export default function Home() {
                 // Play collision sound
                 playSound('/sounds/sfx/collision.mp3');
 
+                // Play announcer voice for choice
+                if (result.playerChoice) {
+                    playSound(`/sounds/voices/announcer/${result.playerChoice}.mp3`);
+                }
+
                 // Play result sound based on winner
                 setTimeout(() => {
                     if (result.winner === 'player') {
@@ -283,7 +322,7 @@ export default function Home() {
                     } else {
                         playSound('/sounds/sfx/tie.mp3');
                     }
-                }, 400);
+                }, 800);
             });
 
             socketIo.on('gameOver', (data: GameOverData) => {
