@@ -90,6 +90,27 @@ export default function Home() {
     const [announcerVolume, setAnnouncerVolume] = useState<number>(0.8);
     const [showSettings, setShowSettings] = useState<boolean>(false);
 
+    // Audio Persistence: Load on mount
+    useEffect(() => {
+        const savedMusicVol = localStorage.getItem('musicVolume');
+        const savedSfxVol = localStorage.getItem('sfxVolume');
+        const savedAnnouncerVol = localStorage.getItem('announcerVolume');
+        const savedMute = localStorage.getItem('isMuted');
+
+        if (savedMusicVol !== null) setMusicVolume(parseFloat(savedMusicVol));
+        if (savedSfxVol !== null) setSfxVolume(parseFloat(savedSfxVol));
+        if (savedAnnouncerVol !== null) setAnnouncerVolume(parseFloat(savedAnnouncerVol));
+        if (savedMute !== null) setIsMuted(savedMute === 'true');
+    }, []);
+
+    // Audio Persistence: Save on change
+    useEffect(() => {
+        localStorage.setItem('musicVolume', musicVolume.toString());
+        localStorage.setItem('sfxVolume', sfxVolume.toString());
+        localStorage.setItem('announcerVolume', announcerVolume.toString());
+        localStorage.setItem('isMuted', isMuted.toString());
+    }, [musicVolume, sfxVolume, announcerVolume, isMuted]);
+
     const fetchLeaderboard = async () => {
         setLoadingLeaderboard(true);
         const { data, error } = await supabase
@@ -291,11 +312,18 @@ export default function Home() {
     };
 
     const handlePurchase = async (type: 'coins' | 'gems', amount: number) => {
-        if (!isSignedIn || !user) return;
+        if (!isSignedIn || !user) {
+            console.error('[ECONOMY] Purchase failed: User not signed in');
+            return;
+        }
 
         playSound('/sounds/sfx/click.mp3');
 
-        const newValue = (type === 'coins' ? coins : gems) + amount;
+        // Functional updates to avoid stale state issues
+        let currentVal = type === 'coins' ? coins : gems;
+        const newValue = currentVal + amount;
+
+        console.log(`[ECONOMY] Attempting to update ${type}: ${currentVal} -> ${newValue}`);
 
         const { error } = await supabase
             .from('profiles')
@@ -305,11 +333,10 @@ export default function Home() {
         if (!error) {
             if (type === 'coins') setCoins(newValue);
             else setGems(newValue);
-
-            // Visual feedback could go here (e.g., toast)
-            console.log(`[ECONOMY] Purchased ${amount} ${type}`);
+            console.log(`[ECONOMY] SUCCESS: Purchased ${amount} ${type}. New total: ${newValue}`);
         } else {
-            console.error('[ECONOMY] Purchase failed:', error);
+            console.error('[ECONOMY] DB UPDATE FAILED:', error);
+            alert(`Error updating balance: ${error.message}. Did you run the migration_economy.sql script?`);
         }
     };
 
@@ -750,7 +777,7 @@ export default function Home() {
                     <div className="leaderboard-card shop-card" style={{ maxWidth: '400px' }}>
                         <div className="leaderboard-header">
                             <div className="leaderboard-logo">💎</div>
-                            <h2 className="leaderboard-title">GEM SHOP</h2>
+                            <h2 className="leaderboard-title" style={{ background: 'linear-gradient(to bottom, #00ffff, #008b8b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GEM SHOP</h2>
                             <button className="close-btn" onClick={() => setShowGemShop(false)}>×</button>
                         </div>
                         <div className="shop-grid">
