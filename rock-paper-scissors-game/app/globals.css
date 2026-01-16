@@ -1124,6 +1124,115 @@ body {
   text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
 }
 
+.economy-item.interactive {
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.economy-item.interactive:hover {
+  transform: scale(1.05) translateY(-2px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.economy-item.interactive:active {
+  transform: scale(0.95);
+}
+
+/* Shop System */
+.shop-card {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 30px;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.shop-item-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.shop-item-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.shop-item-btn.coin:hover {
+  border-color: rgba(255, 215, 0, 0.5);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+}
+
+.shop-item-btn.gem:hover {
+  border-color: rgba(0, 255, 255, 0.5);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+}
+
+.shop-item-icon {
+  font-size: 2rem;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.3));
+}
+
+.shop-item-amount {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: white;
+}
+
+.shop-item-price {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--score-blue);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.shop-item-btn.coin .shop-item-amount {
+  color: #ffd700;
+}
+
+.shop-item-btn.gem .shop-item-amount {
+  color: #00ffff;
+}
+
+@media (max-width: 480px) {
+  .shop-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 15px;
+  }
+
+  .shop-item-amount {
+    font-size: 1.1rem;
+  }
+
+  .shop-item-icon {
+    font-size: 1.5rem;
+  }
+}
+
 /* Settings & Icon Buttons */
 .icon-btn {
   background: var(--button-glass);

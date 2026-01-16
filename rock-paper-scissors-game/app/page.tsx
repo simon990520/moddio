@@ -58,6 +58,12 @@ export default function Home() {
     const [rematchRequested, setRematchRequested] = useState<boolean>(false);
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
+    // Economy State
+    const [coins, setCoins] = useState<number>(0);
+    const [gems, setGems] = useState<number>(0);
+    const [showCoinShop, setShowCoinShop] = useState<boolean>(false);
+    const [showGemShop, setShowGemShop] = useState<boolean>(false);
+
     // Audio & Music State
     // Audio & Music State
     const musicRef = useRef<HTMLAudioElement | null>(null);
@@ -263,6 +269,12 @@ export default function Home() {
                 if (data?.username) setUsername(data.username);
                 // Don't set birthDate if it's null
             }
+
+            // Always update coins/gems if data exists
+            if (data) {
+                setCoins(data.coins || 0);
+                setGems(data.gems || 0);
+            }
         };
 
         checkProfile();
@@ -275,6 +287,29 @@ export default function Home() {
         }
         if (socket) {
             socket.emit('updateProfile', { username, birthDate });
+        }
+    };
+
+    const handlePurchase = async (type: 'coins' | 'gems', amount: number) => {
+        if (!isSignedIn || !user) return;
+
+        playSound('/sounds/sfx/click.mp3');
+
+        const newValue = (type === 'coins' ? coins : gems) + amount;
+
+        const { error } = await supabase
+            .from('profiles')
+            .update({ [type]: newValue })
+            .eq('id', user.id);
+
+        if (!error) {
+            if (type === 'coins') setCoins(newValue);
+            else setGems(newValue);
+
+            // Visual feedback could go here (e.g., toast)
+            console.log(`[ECONOMY] Purchased ${amount} ${type}`);
+        } else {
+            console.error('[ECONOMY] Purchase failed:', error);
         }
     };
 
@@ -575,15 +610,23 @@ export default function Home() {
                 </button>
 
                 {/* Gems (Visual Only) */}
-                <div className="economy-item gem">
+                <div
+                    className="economy-item gem interactive"
+                    onClick={() => setShowGemShop(true)}
+                    title="Open Gem Shop"
+                >
                     <span className="economy-icon">💎</span>
-                    <span className="economy-value">150</span>
+                    <span className="economy-value">{gems.toLocaleString()}</span>
                 </div>
 
                 {/* Coins (Visual Only) */}
-                <div className="economy-item coin">
+                <div
+                    className="economy-item coin interactive"
+                    onClick={() => setShowCoinShop(true)}
+                    title="Open Coin Shop"
+                >
                     <span className="economy-icon">🪙</span>
-                    <span className="economy-value">2,500</span>
+                    <span className="economy-value">{coins.toLocaleString()}</span>
                 </div>
 
                 {/* Rankings Button */}
@@ -670,6 +713,58 @@ export default function Home() {
                                     className="volume-slider"
                                 />
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Coin Shop Modal */}
+            {showCoinShop && (
+                <div className="leaderboard-overlay" style={{ zIndex: 10002 }}>
+                    <div className="leaderboard-card shop-card" style={{ maxWidth: '400px' }}>
+                        <div className="leaderboard-header">
+                            <div className="leaderboard-logo">🪙</div>
+                            <h2 className="leaderboard-title">COIN SHOP</h2>
+                            <button className="close-btn" onClick={() => setShowCoinShop(false)}>×</button>
+                        </div>
+                        <div className="shop-grid">
+                            {[10, 50, 100, 250, 500, 1000].map((amount) => (
+                                <button
+                                    key={amount}
+                                    className="shop-item-btn coin"
+                                    onClick={() => handlePurchase('coins', amount)}
+                                >
+                                    <span className="shop-item-icon">🪙</span>
+                                    <span className="shop-item-amount">+{amount}</span>
+                                    <span className="shop-item-price">RELOAD</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Gem Shop Modal */}
+            {showGemShop && (
+                <div className="leaderboard-overlay" style={{ zIndex: 10003 }}>
+                    <div className="leaderboard-card shop-card" style={{ maxWidth: '400px' }}>
+                        <div className="leaderboard-header">
+                            <div className="leaderboard-logo">💎</div>
+                            <h2 className="leaderboard-title">GEM SHOP</h2>
+                            <button className="close-btn" onClick={() => setShowGemShop(false)}>×</button>
+                        </div>
+                        <div className="shop-grid">
+                            {[10, 50, 100, 250, 500, 1000].map((amount) => (
+                                <button
+                                    key={amount}
+                                    className="shop-item-btn gem"
+                                    onClick={() => handlePurchase('gems', amount)}
+                                >
+                                    <span className="shop-item-icon">💎</span>
+                                    <span className="shop-item-amount">+{amount}</span>
+                                    <span className="shop-item-price">RELOAD</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
