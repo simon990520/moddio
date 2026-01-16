@@ -142,7 +142,15 @@ export default function Home() {
             const audio = new Audio(path);
             audio.volume = volume * 0.4; // Music slightly quieter
             audio.loop = true;
-            audio.play().catch(e => console.warn('[AUDIO] Music failed:', e));
+            audio.play().catch(e => {
+                console.warn('[AUDIO] Autoplay blocked, waiting for interaction:', e);
+                // Try again on first user interaction if blocked
+                const unlock = () => {
+                    audio.play().catch(() => { });
+                    window.removeEventListener('click', unlock);
+                };
+                window.addEventListener('click', unlock);
+            });
             musicRef.current = audio;
         };
 
