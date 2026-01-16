@@ -169,7 +169,9 @@ export default function Home() {
             musicRef.current = audio;
         };
 
-        if (gameState === 'lobby' || gameState === 'waiting') {
+        if (gameState === 'lobby') {
+            playTheme('/sounds/music/battle_theme.mp3');
+        } else if (gameState === 'waiting') {
             playTheme('/sounds/music/menu_theme.mp3');
         } else if (gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult' || gameState === 'gameOver') {
             playTheme('/sounds/music/battle_theme.mp3');
