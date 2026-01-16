@@ -74,7 +74,10 @@ export default function Home() {
 
     // Audio State
     const [isMuted, setIsMuted] = useState<boolean>(false);
-    const [volume, setVolume] = useState<number>(0.5); // 0.0 to 1.0
+    const [musicVolume, setMusicVolume] = useState<number>(0.5);
+    const [sfxVolume, setSfxVolume] = useState<number>(0.7);
+    const [announcerVolume, setAnnouncerVolume] = useState<number>(0.8);
+    const [showSettings, setShowSettings] = useState<boolean>(false);
 
     const fetchLeaderboard = async () => {
         setLoadingLeaderboard(true);
@@ -101,7 +104,14 @@ export default function Home() {
         if (isMuted) return;
         try {
             const audio = new Audio(soundPath);
-            audio.volume = volumeOverride !== undefined ? volumeOverride : volume;
+
+            // Handle volume by category
+            let baseVolume = sfxVolume;
+            if (soundPath.includes('/voices/announcer/')) {
+                baseVolume = announcerVolume;
+            }
+
+            audio.volume = volumeOverride !== undefined ? volumeOverride : baseVolume;
             audio.play().catch(err => console.warn('[AUDIO] Play failed:', err));
         } catch (error) {
             console.error('[AUDIO] Error playing sound:', error);
@@ -112,7 +122,7 @@ export default function Home() {
         if (isMuted) return;
         try {
             const audio = new Audio(soundPath);
-            audio.volume = volume * 0.6; // Background music at 60% of main volume
+            audio.volume = musicVolume * 0.6; // Background music at 60% of music volume
             audio.loop = loop;
             audio.play().catch(err => console.warn('[AUDIO] Music play failed:', err));
             return audio;
@@ -148,7 +158,7 @@ export default function Home() {
             }
 
             const audio = new Audio(path);
-            audio.volume = volume * 0.4;
+            audio.volume = musicVolume * 0.4;
             audio.loop = true;
 
             const startAttempt = () => {
@@ -176,7 +186,7 @@ export default function Home() {
         } else if (gameState === 'countdown' || gameState === 'playing' || gameState === 'roundResult' || gameState === 'gameOver') {
             playTheme('/sounds/music/battle_theme.mp3');
         }
-    }, [gameState, isMuted, volume]);
+    }, [gameState, isMuted, musicVolume]);
 
     // Infinite Hue Cycle Background (60fps)
     const hueRef = useRef(Math.floor(Math.random() * 360));
@@ -455,6 +465,12 @@ export default function Home() {
             return;
         }
 
+        // Leaderboard access moved to Settings or Side Button? User asked to remove it from header.
+        // I will keep Rankings button as a small side button or move it inside the modal?
+        // Let's move it to a floating button on the left or keep it in header.
+        // User didn't specify what to do with Rankings but gave a new order.
+        // I will add another button for Rankings elsewhere if needed, or put it in the modal.
+
         console.log('[GAME_ACTION] Emitting findMatch...');
         console.log('[DEBUG_AVATAR] Full user object:', user);
         console.log('[DEBUG_AVATAR] user.imageUrl:', user?.imageUrl);
@@ -517,18 +533,107 @@ export default function Home() {
 
     return (
         <>
-            {/* Header with User Profile and Leaderboard Toggle - Outside Shake Container */}
+            {/* Header with User Profile, Economy and Settings - Outside Shake Container */}
             <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
+                {/* Settings Toggle */}
                 <button
-                    className="leaderboard-toggle"
-                    onClick={() => setShowLeaderboard(true)}
+                    className="icon-btn settings-btn"
+                    onClick={() => setShowSettings(true)}
+                    title="Settings"
                 >
-                    🏆 Rankings
+                    ⚙️
                 </button>
+
+                {/* Gems (Visual Only) */}
+                <div className="economy-item gem">
+                    <span className="economy-icon">💎</span>
+                    <span className="economy-value">150</span>
+                </div>
+
+                {/* Coins (Visual Only) */}
+                <div className="economy-item coin">
+                    <span className="economy-icon">🪙</span>
+                    <span className="economy-value">2,500</span>
+                </div>
+
                 <SignedIn>
                     <UserButton afterSignOutUrl="/" />
                 </SignedIn>
             </div>
+
+            {/* Settings Modal */}
+            {showSettings && (
+                <div className="leaderboard-overlay" style={{ zIndex: 10001 }}>
+                    <div className="leaderboard-card" style={{ maxWidth: '400px' }}>
+                        <div className="leaderboard-header">
+                            <div className="leaderboard-logo">⚙️</div>
+                            <h2 className="leaderboard-title">SETTINGS</h2>
+                            <button className="close-btn" onClick={() => setShowSettings(false)}>×</button>
+                        </div>
+
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                            {/* Mute Toggle */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 600 }}>Master Mute</span>
+                                <button
+                                    className={`btn-${isMuted ? 'primary' : 'secondary'}`}
+                                    onClick={() => setIsMuted(!isMuted)}
+                                    style={{ padding: '8px 20px', fontSize: '0.9rem' }}
+                                >
+                                    {isMuted ? 'UNMUTE' : 'MUTE'}
+                                </button>
+                            </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
+
+                            {/* Music Volume */}
+                            <div className="volume-control">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span>🎵 Music</span>
+                                    <span>{Math.round(musicVolume * 100)}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0" max="1" step="0.01"
+                                    value={musicVolume}
+                                    onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+                                    className="volume-slider"
+                                />
+                            </div>
+
+                            {/* SFX Volume */}
+                            <div className="volume-control">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span>💥 Effects</span>
+                                    <span>{Math.round(sfxVolume * 100)}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0" max="1" step="0.01"
+                                    value={sfxVolume}
+                                    onChange={(e) => setSfxVolume(parseFloat(e.target.value))}
+                                    className="volume-slider"
+                                />
+                            </div>
+
+                            {/* Announcer Volume */}
+                            <div className="volume-control">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span>🎙️ Announcer</span>
+                                    <span>{Math.round(announcerVolume * 100)}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0" max="1" step="0.01"
+                                    value={announcerVolume}
+                                    onChange={(e) => setAnnouncerVolume(parseFloat(e.target.value))}
+                                    className="volume-slider"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Leaderboard Overlay */}
             {showLeaderboard && (
