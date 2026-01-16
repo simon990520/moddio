@@ -308,11 +308,6 @@ export default function Home() {
                 // Play collision sound
                 playSound('/sounds/sfx/collision.mp3');
 
-                // Play announcer voice for choice
-                if (result.playerChoice) {
-                    playSound(`/sounds/voices/announcer/${result.playerChoice}.mp3`);
-                }
-
                 // Play result sound based on winner
                 setTimeout(() => {
                     if (result.winner === 'player') {
@@ -322,7 +317,7 @@ export default function Home() {
                     } else {
                         playSound('/sounds/sfx/tie.mp3');
                     }
-                }, 800);
+                }, 400); // Reduced delay since announcer voices are now earlier
             });
 
             socketIo.on('gameOver', (data: GameOverData) => {
@@ -448,6 +443,7 @@ export default function Home() {
             setChoiceMade(true);
             setPlayerChoice(choice);
             playSound('/sounds/sfx/click.mp3');
+            playSound(`/sounds/voices/announcer/${choice}.mp3`);
             socket.emit('makeChoice', choice);
         }
     };
