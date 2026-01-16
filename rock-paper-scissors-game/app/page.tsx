@@ -59,7 +59,12 @@ export default function Home() {
     const [rematchStatus, setRematchStatus] = useState<string>('');
 
     // Audio & Music State
+    // Audio & Music State
     const musicRef = useRef<HTMLAudioElement | null>(null);
+    const musicVolumeRef = useRef<number>(0.5);
+    const sfxVolumeRef = useRef<number>(0.7);
+    const announcerVolumeRef = useRef<number>(0.8);
+    const isMutedRef = useRef<boolean>(false);
 
     // Onboarding State
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
@@ -99,16 +104,24 @@ export default function Home() {
         }
     }, [showLeaderboard]);
 
+    // Sync volume refs with state to avoid stale closures in socket listeners
+    useEffect(() => {
+        musicVolumeRef.current = musicVolume;
+        sfxVolumeRef.current = sfxVolume;
+        announcerVolumeRef.current = announcerVolume;
+        isMutedRef.current = isMuted;
+    }, [musicVolume, sfxVolume, announcerVolume, isMuted]);
+
     // Centralized Audio Manager
     const playSound = (soundPath: string, volumeOverride?: number) => {
-        if (isMuted) return;
+        if (isMutedRef.current) return;
         try {
             const audio = new Audio(soundPath);
 
             // Handle volume by category
-            let baseVolume = sfxVolume;
+            let baseVolume = sfxVolumeRef.current;
             if (soundPath.includes('/voices/announcer/')) {
-                baseVolume = announcerVolume;
+                baseVolume = announcerVolumeRef.current;
             }
 
             audio.volume = volumeOverride !== undefined ? volumeOverride : baseVolume;
@@ -119,10 +132,10 @@ export default function Home() {
     };
 
     const playMusic = (soundPath: string, loop: boolean = true) => {
-        if (isMuted) return;
+        if (isMutedRef.current) return;
         try {
             const audio = new Audio(soundPath);
-            audio.volume = musicVolume * 0.6; // Background music at 60% of music volume
+            audio.volume = musicVolumeRef.current * 0.6; // Background music at 60% of music volume
             audio.loop = loop;
             audio.play().catch(err => console.warn('[AUDIO] Music play failed:', err));
             return audio;
@@ -131,6 +144,17 @@ export default function Home() {
             return null;
         }
     };
+
+    // Dedicated Music Volume Sync (Ensures real-time sliding works)
+    useEffect(() => {
+        if (musicRef.current) {
+            if (isMuted) {
+                musicRef.current.volume = 0;
+            } else {
+                musicRef.current.volume = musicVolume * 0.4;
+            }
+        }
+    }, [musicVolume, isMuted]);
 
     // Background Music Controller
     useEffect(() => {
@@ -146,9 +170,13 @@ export default function Home() {
             // Check if we are already trying to play this exact file
             const currentSrc = musicRef.current?.src || '';
             if (currentSrc.includes(path)) {
-                // If it's already the current ref but it's paused (due to autoplay block), try playing again
-                if (musicRef.current?.paused) {
-                    musicRef.current.play().catch(() => { });
+                // UPDATE VOLUME REAL-TIME if same file
+                if (musicRef.current) {
+                    musicRef.current.volume = isMutedRef.current ? 0 : musicVolumeRef.current * 0.4;
+                    // If it's already the current ref but it's paused (due to autoplay block), try playing again
+                    if (musicRef.current.paused) {
+                        musicRef.current.play().catch(() => { });
+                    }
                 }
                 return;
             }
@@ -158,20 +186,22 @@ export default function Home() {
             }
 
             const audio = new Audio(path);
-            audio.volume = musicVolume * 0.4;
+            audio.volume = musicVolumeRef.current * 0.4;
             audio.loop = true;
 
             const startAttempt = () => {
                 audio.play().catch(e => {
                     console.warn('[AUDIO] Autoplay standby for:', path);
-                    // Global interaction listener to unlock this specific audio
+                    // Global interaction listener to unlock ANY audio context including battle_theme
                     const unlock = () => {
                         audio.play().catch(() => { });
                         window.removeEventListener('mousedown', unlock);
                         window.removeEventListener('touchstart', unlock);
+                        window.removeEventListener('click', unlock);
                     };
                     window.addEventListener('mousedown', unlock);
                     window.addEventListener('touchstart', unlock);
+                    window.addEventListener('click', unlock);
                 });
             };
 
@@ -535,6 +565,22 @@ export default function Home() {
         <>
             {/* Header with User Profile, Economy and Settings - Outside Shake Container */}
             <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <SignedIn>
+                    <UserButton afterSignOutUrl="/" />
+                </SignedIn>
+
+                {/* Coins (Visual Only) */}
+                <div className="economy-item coin">
+                    <span className="economy-icon">🪙</span>
+                    <span className="economy-value">2,500</span>
+                </div>
+
+                {/* Gems (Visual Only) */}
+                <div className="economy-item gem">
+                    <span className="economy-icon">💎</span>
+                    <span className="economy-value">150</span>
+                </div>
+
                 {/* Settings Toggle */}
                 <button
                     className="icon-btn settings-btn"
@@ -543,22 +589,6 @@ export default function Home() {
                 >
                     ⚙️
                 </button>
-
-                {/* Gems (Visual Only) */}
-                <div className="economy-item gem">
-                    <span className="economy-icon">💎</span>
-                    <span className="economy-value">150</span>
-                </div>
-
-                {/* Coins (Visual Only) */}
-                <div className="economy-item coin">
-                    <span className="economy-icon">🪙</span>
-                    <span className="economy-value">2,500</span>
-                </div>
-
-                <SignedIn>
-                    <UserButton afterSignOutUrl="/" />
-                </SignedIn>
             </div>
 
             {/* Settings Modal */}
