@@ -565,23 +565,7 @@ export default function Home() {
         <>
             {/* Header with User Profile, Economy and Settings - Outside Shake Container */}
             <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', gap: '15px', alignItems: 'center' }}>
-                <SignedIn>
-                    <UserButton afterSignOutUrl="/" />
-                </SignedIn>
-
-                {/* Coins (Visual Only) */}
-                <div className="economy-item coin">
-                    <span className="economy-icon">🪙</span>
-                    <span className="economy-value">2,500</span>
-                </div>
-
-                {/* Gems (Visual Only) */}
-                <div className="economy-item gem">
-                    <span className="economy-icon">💎</span>
-                    <span className="economy-value">150</span>
-                </div>
-
-                {/* Settings Toggle */}
+                {/* Settings Toggle (Leftmost) */}
                 <button
                     className="icon-btn settings-btn"
                     onClick={() => setShowSettings(true)}
@@ -589,6 +573,32 @@ export default function Home() {
                 >
                     ⚙️
                 </button>
+
+                {/* Gems (Visual Only) */}
+                <div className="economy-item gem">
+                    <span className="economy-icon">💎</span>
+                    <span className="economy-value">150</span>
+                </div>
+
+                {/* Coins (Visual Only) */}
+                <div className="economy-item coin">
+                    <span className="economy-icon">🪙</span>
+                    <span className="economy-value">2,500</span>
+                </div>
+
+                {/* Rankings Button */}
+                <button
+                    className="leaderboard-toggle"
+                    onClick={() => setShowLeaderboard(true)}
+                    style={{ margin: 0 }}
+                >
+                    🏆 Rankings
+                </button>
+
+                {/* User Profile (Rightmost) */}
+                <SignedIn>
+                    <UserButton afterSignOutUrl="/" />
+                </SignedIn>
             </div>
 
             {/* Settings Modal */}
