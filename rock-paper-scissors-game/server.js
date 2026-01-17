@@ -27,6 +27,24 @@ const waitingPlayers = {
     500: [],
     1000: []
 };
+
+const RANK_CONFIG = {
+    'BRONCE': { min: 0, max: 100, stake: 1 },
+    'PLATA': { min: 101, max: 300, stake: 2 },
+    'ORO': { min: 301, max: 600, stake: 5 },
+    'PLATINO': { min: 601, max: 1000, stake: 10 },
+    'DIAMANTE': { min: 1001, max: 2000, stake: 25 },
+    'LEYENDA': { min: 2001, max: 999999, stake: 50 }
+};
+
+const waitingRanked = {
+    'BRONCE': [],
+    'PLATA': [],
+    'ORO': [],
+    'PLATINO': [],
+    'DIAMANTE': [],
+    'LEYENDA': []
+};
 const activeRooms = new Map();
 const userSockets = new Map(); // userId -> socketId (Enforce single session)
 
@@ -67,6 +85,13 @@ function determineWinner(choice1, choice2) {
         return 'player1';
     }
     return 'player2';
+}
+
+function getRankByRp(rp) {
+    for (const [rank, config] of Object.entries(RANK_CONFIG)) {
+        if (rp >= config.min && rp <= config.max) return rank;
+    }
+    return 'BRONCE';
 }
 
 app.prepare().then(() => {
@@ -194,37 +219,42 @@ app.prepare().then(() => {
         socket.on('findMatch', async (data) => {
             const userId = socket.userId;
             const imageUrl = data?.imageUrl;
-            const stakeTier = data?.stakeTier || 10; // Default stake
+            const mode = data?.mode || 'casual';
+            const stakeTier = data?.stakeTier || 10;
 
-            console.log('[SERVER_GAME] findMatch request:', { userId, stakeTier });
+            console.log('[SERVER_GAME] findMatch request:', { userId, mode, stakeTier });
 
-            // 1. Check if user has enough coins for this tier
+            // 1. Fetch Profile for validation
+            let profile;
             try {
-                const { data: profile, error: profileErr } = await supabase
-                    .from('profiles')
-                    .select('coins')
-                    .eq('id', userId)
-                    .single();
-
-                if (profileErr || (profile && profile.coins < stakeTier)) {
-                    socket.emit('matchError', 'No tienes suficientes monedas para entrar en esta Arena.');
-                    return;
-                }
+                const { data: p, error } = await supabase.from('profiles').select('coins, gems, rp').eq('id', userId).single();
+                if (error) throw error;
+                profile = p;
             } catch (err) {
-                console.error('[SERVER_GAME] Check balance error:', err.message);
-            }
-
-            // Check if player is already waiting in ANY tier
-            const isWaiting = Object.values(waitingPlayers).some(queue =>
-                queue.some(p => p.socketId === socket.id || p.userId === userId)
-            );
-
-            if (isWaiting) {
-                console.warn('[SERVER_GAME] Player already in queue:', userId);
+                console.error('[SERVER_GAME] Profile fetch error:', err.message);
+                socket.emit('matchError', 'Error al cargar perfil.');
                 return;
             }
 
-            // Check if player was in a finished game
+            // 2. Resource Validation
+            let currentStake = stakeTier;
+            let currentRank = null;
+
+            if (mode === 'casual') {
+                if (profile.coins < stakeTier) {
+                    socket.emit('matchError', 'No tienes suficientes monedas para esta Arena.');
+                    return;
+                }
+            } else {
+                currentRank = getRankByRp(profile.rp || 0);
+                currentStake = RANK_CONFIG[currentRank].stake;
+                if (profile.gems < currentStake) {
+                    socket.emit('matchError', `Necesitas ${currentStake} gemas para jugar en el rango ${currentRank}.`);
+                    return;
+                }
+            }
+
+            // 3. Clear Stale Rooms
             if (activeRooms.has(socket.id)) {
                 const room = activeRooms.get(socket.id);
                 if (room.state === 'gameOver') {
@@ -237,56 +267,76 @@ app.prepare().then(() => {
                 }
             }
 
-            const player = createPlayer(socket.id, userId, imageUrl);
-            player.stakeTier = stakeTier;
+            // 4. Prevent duplicate queue
+            const isWaiting = (Object.values(waitingPlayers).flat().some(p => p.userId === userId)) ||
+                (Object.values(waitingRanked).flat().some(p => p.userId === userId));
+            if (isWaiting) {
+                console.warn('[SERVER_GAME] Player already in queue:', userId);
+                return;
+            }
 
-            // If someone is waiting in THIS tier, match them
-            if (waitingPlayers[stakeTier] && waitingPlayers[stakeTier].length > 0) {
-                const opponent = waitingPlayers[stakeTier].shift();
-                console.log(`[SERVER_GAME] MATCH FOUND in tier ${stakeTier}!`);
+            const player = createPlayer(socket.id, userId, imageUrl);
+            player.mode = mode;
+            player.stakeTier = currentStake;
+            player.rank = currentRank;
+
+            // 5. Matchmaking logic
+            const queueMap = mode === 'casual' ? waitingPlayers : waitingRanked;
+            const queueKey = mode === 'casual' ? currentStake : currentRank;
+
+            if (queueMap[queueKey] && queueMap[queueKey].length > 0) {
+                const opponent = queueMap[queueKey].shift();
+                console.log(`[SERVER_GAME] MATCH FOUND: ${mode} mode (${queueKey})!`);
+
                 const room = createRoom(player, opponent);
-                room.stakeTier = stakeTier;
+                room.mode = mode;
+                room.stakeTier = currentStake;
+                room.rank = currentRank;
 
                 activeRooms.set(socket.id, room);
                 activeRooms.set(opponent.socketId, room);
                 socket.join(room.id);
                 io.sockets.sockets.get(opponent.socketId)?.join(room.id);
 
-                // DEDUCT COINS from both players on match start
+                // DEDUCT ENTRY FEES
+                const currency = mode === 'casual' ? 'coins' : 'gems';
                 const deductEntry = async (uId) => {
-                    const { data: p } = await supabase.from('profiles').select('coins').eq('id', uId).single();
-                    if (p) {
-                        await supabase.from('profiles').update({ coins: p.coins - stakeTier }).eq('id', uId);
-                    }
+                    try {
+                        const { data: p } = await supabase.from('profiles').select(currency).eq('id', uId).single();
+                        if (p) {
+                            await supabase.from('profiles').update({ [currency]: p[currency] - currentStake }).eq('id', uId);
+                        }
+                    } catch (e) { console.error('[SERVER_ECONOMY] Deduction failed:', e.message); }
                 };
                 await deductEntry(player.userId);
                 await deductEntry(opponent.userId);
 
                 // Notify both players
-                const matchData0 = {
+                socket.emit('matchFound', {
                     roomId: room.id,
                     playerIndex: 0,
                     opponentId: opponent.id,
                     opponentImageUrl: opponent.imageUrl || null,
-                    stakeTier
-                };
-                socket.emit('matchFound', matchData0);
+                    stakeTier: currentStake,
+                    mode: mode,
+                    rank: currentRank
+                });
 
-                const matchData1 = {
+                io.to(opponent.socketId).emit('matchFound', {
                     roomId: room.id,
                     playerIndex: 1,
                     opponentId: player.id,
                     opponentImageUrl: player.imageUrl || null,
-                    stakeTier
-                };
-                io.to(opponent.socketId).emit('matchFound', matchData1);
+                    stakeTier: currentStake,
+                    mode: mode,
+                    rank: currentRank
+                });
 
                 setTimeout(() => { startCountdown(room.id); }, 1000);
             } else {
-                // Add to specific tier queue
-                if (!waitingPlayers[stakeTier]) waitingPlayers[stakeTier] = [];
-                waitingPlayers[stakeTier].push(player);
-                console.log(`[SERVER_GAME] Added to queue tier ${stakeTier}. Size:`, waitingPlayers[stakeTier].length);
+                if (!queueMap[queueKey]) queueMap[queueKey] = [];
+                queueMap[queueKey].push(player);
+                console.log(`[SERVER_GAME] Added to ${mode} queue (${queueKey}). Size:`, queueMap[queueKey].length);
                 socket.emit('waiting');
             }
         });
@@ -372,11 +422,23 @@ app.prepare().then(() => {
                 userSockets.delete(userId);
             }
 
-            // Remove from waiting queue
-            const waitingIndex = waitingPlayers.findIndex(p => p.socketId === socket.id);
-            if (waitingIndex !== -1) {
-                waitingPlayers.splice(waitingIndex, 1);
-            }
+            // Remove from waiting queue (Casual)
+            Object.values(waitingPlayers).forEach(queue => {
+                const index = queue.findIndex(p => p.socketId === socket.id);
+                if (index !== -1) {
+                    queue.splice(index, 1);
+                    console.log('[SERVER_GAME] Removed from Casual queue:', socket.id);
+                }
+            });
+
+            // Remove from waiting queue (Ranked)
+            Object.values(waitingRanked).forEach(queue => {
+                const index = queue.findIndex(p => p.socketId === socket.id);
+                if (index !== -1) {
+                    queue.splice(index, 1);
+                    console.log('[SERVER_GAME] Removed from Ranked queue:', socket.id);
+                }
+            });
 
             // Handle room disconnection
             const room = activeRooms.get(socket.id);
@@ -388,7 +450,33 @@ app.prepare().then(() => {
                     activeRooms.delete(opponentSocket);
                 }
                 activeRooms.delete(socket.id);
+                activeRooms.delete(socket.id);
             }
+        });
+
+        socket.on('leaveQueue', () => {
+            console.log('[SERVER_GAME] leaveQueue request from:', socket.id);
+
+            // Remove from Casual queue
+            Object.values(waitingPlayers).forEach(queue => {
+                const index = queue.findIndex(p => p.socketId === socket.id);
+                if (index !== -1) {
+                    queue.splice(index, 1);
+                    console.log('[SERVER_GAME] User left Casual queue');
+                }
+            });
+
+            // Remove from Ranked queue
+            Object.values(waitingRanked).forEach(queue => {
+                const index = queue.findIndex(p => p.socketId === socket.id);
+                if (index !== -1) {
+                    queue.splice(index, 1);
+                    console.log('[SERVER_GAME] User left Ranked queue');
+                }
+            });
+
+            // Confirm to client
+            socket.emit('queueLeft');
         });
     });
 
@@ -471,81 +559,90 @@ app.prepare().then(() => {
         const winner = player1.score > player2.score ? 'player1' : 'player2';
         const winnerId = winner === 'player1' ? player1.userId : player2.userId;
 
-        io.to(player1.socketId).emit('gameOver', {
-            winner: winner === 'player1' ? 'player' : 'opponent',
-            finalScore: {
-                player: player1.score,
-                opponent: player2.score
-            }
-        });
+        // PRE-CALCULATE UPDATES & PERSIST
+        const getUpdateData = async (player, isWinner) => {
+            let resultData = { rpChange: 0, newRp: 0, newRank: 'BRONCE', prize: 0 };
+            try {
+                const { data: profile } = await supabase.from('profiles').select('*').eq('id', player.userId).single();
+                if (!profile) return resultData;
 
-        io.to(player2.socketId).emit('gameOver', {
-            winner: winner === 'player2' ? 'player' : 'opponent',
-            finalScore: {
-                player: player2.score,
-                opponent: player1.score
-            }
-        });
+                let updates = {
+                    total_wins: isWinner ? (profile.total_wins || 0) + 1 : (profile.total_wins || 0),
+                    total_games: (profile.total_games || 0) + 1
+                };
 
-        // Background persistence to Supabase
+                // Handle Ranked Mode
+                if (room.mode === 'ranked') {
+                    const rpChange = isWinner ? 20 : -15;
+                    const newRp = Math.max(0, (profile.rp || 0) + rpChange);
+                    const newRank = getRankByRp(newRp);
+
+                    updates.rp = newRp;
+                    updates.rank_name = newRank;
+                    resultData.rpChange = rpChange;
+                    resultData.newRp = newRp;
+                    resultData.newRank = newRank;
+
+                    if (isWinner) {
+                        const prize = room.stakeTier * 2;
+                        updates.gems = (profile.gems || 0) + prize;
+                        resultData.prize = prize;
+                    }
+                }
+                // Handle Casual Mode
+                else if (isWinner && room.stakeTier) {
+                    const prize = room.stakeTier * 2;
+                    updates.coins = (profile.coins || 0) + prize;
+                    resultData.prize = prize;
+                }
+
+                await supabase.from('profiles').update(updates).eq('id', player.userId);
+                return resultData;
+            } catch (e) {
+                console.error('[SERVER_GAME] Profile update failed:', e.message);
+                return resultData;
+            }
+        };
+
+        const p1Data = await getUpdateData(player1, winner === 'player1');
+        const p2Data = await getUpdateData(player2, winner === 'player2');
+
+        // RECORD MATCH
         try {
-            // 1. Record the match
-            const { error: matchError } = await supabase.from('matches').insert({
+            await supabase.from('matches').insert({
                 player1_id: player1.userId,
                 player2_id: player2.userId,
                 winner_id: winnerId,
                 p1_score: player1.score,
-                p2_score: player2.score
+                p2_score: player2.score,
+                mode: room.mode || 'casual',
+                stake: room.stakeTier || 0
             });
-
-            if (matchError) throw matchError;
-
-            // 2. Update profiles (Atomic increment)
-            // Note: In Supabase/PostgREST we use .rpc() for true atomic increments 
-            // but for this PoC we'll do a simple update or assume the user exists.
-
-            const updateStats = async (userId, isWinner) => {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('total_wins, total_games')
-                    .eq('id', userId)
-                    .single();
-
-                if (profile) {
-                    await supabase.from('profiles').update({
-                        total_wins: isWinner ? profile.total_wins + 1 : profile.total_wins,
-                        total_games: profile.total_games + 1
-                    }).eq('id', userId);
-                } else {
-                    // Create profile if doesn't exist
-                    await supabase.from('profiles').insert({
-                        id: userId,
-                        total_wins: isWinner ? 1 : 0,
-                        total_games: 1
-                    });
-                }
-            };
-
-            await updateStats(player1.userId, winner === 'player1');
-            await updateStats(player2.userId, winner === 'player2');
-
-            // 3. Award Prize to Winner (2x stake)
-            if (room.stakeTier) {
-                const awardPrize = async (pId) => {
-                    const { data: p } = await supabase.from('profiles').select('coins').eq('id', pId).single();
-                    if (p) {
-                        const prize = room.stakeTier * 2;
-                        await supabase.from('profiles').update({ coins: p.coins + prize }).eq('id', pId);
-                        console.log(`[SERVER_ECONOMY] Awarded ${prize} coins to winner ${pId}`);
-                    }
-                };
-                await awardPrize(winner === 'player1' ? player1.userId : player2.userId);
-            }
-
             console.log('Match recorded successfully in Supabase');
         } catch (err) {
             console.error('Error recording match in Supabase:', err.message);
         }
+
+        // EMIT EVENTS WITH DATA
+        io.to(player1.socketId).emit('gameOver', {
+            winner: winner === 'player1' ? 'player' : 'opponent',
+            finalScore: { player: player1.score, opponent: player2.score },
+            rpChange: p1Data.rpChange,
+            newRp: p1Data.newRp,
+            newRank: p1Data.newRank,
+            prize: p1Data.prize,
+            mode: room.mode
+        });
+
+        io.to(player2.socketId).emit('gameOver', {
+            winner: winner === 'player2' ? 'player' : 'opponent',
+            finalScore: { player: player2.score, opponent: player1.score },
+            rpChange: p2Data.rpChange,
+            newRp: p2Data.newRp,
+            newRank: p2Data.newRank,
+            prize: p2Data.prize,
+            mode: room.mode
+        });
     }
 
     httpServer

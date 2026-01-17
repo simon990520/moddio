@@ -100,6 +100,24 @@ export default function Home() {
     const [selectedStake, setSelectedStake] = useState(10);
     const [currentMatchStake, setCurrentMatchStake] = useState<number | null>(null);
 
+    // Animation State
+    const [showRewardAnim, setShowRewardAnim] = useState(false);
+    const [rewardData, setRewardData] = useState<{ type: 'coins' | 'gems' | 'rp', amount: number, isWin: boolean } | null>(null);
+
+    // Ranked State
+    const [gameMode, setGameMode] = useState<'casual' | 'ranked'>('casual');
+    const [rp, setRp] = useState<number>(0);
+    const [rankName, setRankName] = useState<string>('BRONCE');
+
+    const RANKS = [
+        { id: 'BRONCE', name: 'BRONCE', icon: '🥉', color: '#cd7f32', minRp: 0, maxRp: 100, stake: 1 },
+        { id: 'PLATA', name: 'PLATA', icon: '🥈', color: '#c0c0c0', minRp: 101, maxRp: 300, stake: 2 },
+        { id: 'ORO', name: 'ORO', icon: '🥇', color: '#ffd700', minRp: 301, maxRp: 600, stake: 5 },
+        { id: 'PLATINO', name: 'PLATINO', icon: '💠', color: '#e5e4e2', minRp: 601, maxRp: 1000, stake: 10 },
+        { id: 'DIAMANTE', name: 'DIAMANTE', icon: '💎', color: '#b9f2ff', minRp: 1001, maxRp: 2000, stake: 25 },
+        { id: 'LEYENDA', name: 'LEYENDA', icon: '👑', color: '#ff00ff', minRp: 2001, maxRp: 999999, stake: 50 }
+    ];
+
     // Audio Persistence: Load on mount
     useEffect(() => {
         const savedMusicVol = localStorage.getItem('musicVolume');
@@ -298,10 +316,11 @@ export default function Home() {
             // Don't set birthDate if it's null
         }
 
-        // Always update coins/gems if data exists
         if (data) {
             setCoins(data.coins || 0);
             setGems(data.gems || 0);
+            setRp(data.rp || 0);
+            setRankName(data.rank_name || 'BRONCE');
         }
     };
 
@@ -394,7 +413,15 @@ export default function Home() {
                 setGameState('waiting');
             });
 
-            socketIo.on('matchFound', (data: { roomId: string, playerIndex: number, opponentId: string, opponentImageUrl?: string, stakeTier?: number }) => {
+            socketIo.on('matchFound', (data: {
+                roomId: string,
+                playerIndex: number,
+                opponentId: string,
+                opponentImageUrl?: string,
+                stakeTier?: number,
+                mode?: 'casual' | 'ranked',
+                rank?: string
+            }) => {
                 console.log('[GAME_STATUS] Match found! Data:', data);
                 setGameState('countdown');
                 setPlayerScore(0);
@@ -402,16 +429,15 @@ export default function Home() {
                 setRound(1);
                 setRematchRequested(false);
                 setRematchStatus('');
+
                 if (data.stakeTier) {
                     setCurrentMatchStake(data.stakeTier);
-                    // Force refresh profile to show deducted coins
                     checkProfile();
                 }
+
                 if (data?.opponentImageUrl) {
-                    console.log('[AVATAR] Setting opponent image:', data.opponentImageUrl);
                     setOpponentImageUrl(data.opponentImageUrl);
                 } else {
-                    console.warn('[AVATAR] No opponent image received, using fallback');
                     setOpponentImageUrl(null);
                 }
             });
@@ -580,6 +606,7 @@ export default function Home() {
 
         socket.emit('findMatch', {
             imageUrl: user?.imageUrl,
+            mode: gameMode,
             stakeTier: selectedStake
         });
     };
@@ -923,7 +950,7 @@ export default function Home() {
                     <div className="top-info-bar" style={{ animation: 'fadeIn 0.2s ease-out' }}>
                         {currentMatchStake && (
                             <div className="stake-badge">
-                                APUESTA: {currentMatchStake * 2} 🪙
+                                APUESTA: {currentMatchStake * 2} {gameMode === 'casual' ? '🪙' : '💎'}
                             </div>
                         )}
                         {gameState === 'playing' && (
@@ -956,7 +983,6 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* Center content */}
                 <div className="center-content">
                     {gameState === 'lobby' && (
                         <div style={{ textAlign: 'center' }}>
@@ -976,29 +1002,72 @@ export default function Home() {
                             </SignedOut>
 
                             <SignedIn>
-                                {/* Arena Selector */}
-                                <div className="arena-selector">
-                                    <p className="arena-label">ELIGE TU ARENA</p>
-                                    <div className="arena-grid">
-                                        {ARENAS.map((arena) => (
-                                            <div
-                                                key={arena.id}
-                                                className={`arena-card ${selectedStake === arena.id ? 'active' : ''}`}
-                                                style={{ '--arena-color': arena.color } as any}
-                                                onClick={() => {
-                                                    setSelectedStake(arena.id);
-                                                    playSound('/sounds/sfx/click.mp3');
-                                                }}
-                                            >
-                                                <div className="arena-icon">{arena.icon}</div>
-                                                <div className="arena-name">{arena.name}</div>
-                                                <div className="arena-entry">{arena.entry} 🪙</div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                {/* Mode Selector */}
+                                <div className="mode-toggle-container">
+                                    <button
+                                        className={`mode-btn ${gameMode === 'casual' ? 'active' : ''}`}
+                                        onClick={() => { setGameMode('casual'); playSound('/sounds/sfx/click.mp3'); }}
+                                    >
+                                        CASUAL
+                                    </button>
+                                    <button
+                                        className={`mode-btn ${gameMode === 'ranked' ? 'active' : ''}`}
+                                        onClick={() => { setGameMode('ranked'); playSound('/sounds/sfx/click.mp3'); }}
+                                    >
+                                        RANKED
+                                    </button>
                                 </div>
 
-                                <button className="btn-primary" onClick={handleFindMatch} style={{ marginTop: '20px' }}>
+                                <div className="mode-display-container" style={{ minHeight: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                                    {gameMode === 'casual' ? (
+                                        <div className="arena-selector">
+                                            <p className="arena-label">ELIGE TU ARENA</p>
+                                            <div className="arena-grid">
+                                                {ARENAS.map((arena) => (
+                                                    <div
+                                                        key={arena.id}
+                                                        className={`arena-card ${selectedStake === arena.id ? 'active' : ''}`}
+                                                        style={{ '--arena-color': arena.color } as any}
+                                                        onClick={() => {
+                                                            setSelectedStake(arena.id);
+                                                            playSound('/sounds/sfx/click.mp3');
+                                                        }}
+                                                    >
+                                                        <div className="arena-icon">{arena.icon}</div>
+                                                        <div className="arena-name">{arena.name}</div>
+                                                        <div className="arena-entry">{arena.entry} 🪙</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="arena-selector ranked-area">
+                                            <p className="arena-label">DUELO DE RANGO</p>
+                                            <div className="ranked-card" style={{ '--rank-color': RANKS.find(r => r.id === rankName)?.color } as any}>
+                                                <div className="ranked-badge">{RANKS.find(r => r.id === rankName)?.icon}</div>
+                                                <div className="ranked-info">
+                                                    <div className="ranked-name">{rankName}</div>
+                                                    <div className="ranked-rp">{rp} RP</div>
+                                                    <div className="ranked-stake">Costo: {RANKS.find(r => r.id === rankName)?.stake} 💎</div>
+                                                </div>
+                                                <div className="rp-progress-bg">
+                                                    <div className="rp-progress-fill" style={{
+                                                        width: `${Math.min(100, ((rp - (RANKS.find(r => r.id === rankName)?.minRp || 0)) / ((RANKS.find(r => r.id === rankName)?.maxRp || 1) - (RANKS.find(r => r.id === rankName)?.minRp || 0))) * 100)}%`
+                                                    }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => {
+                                        playSound('/sounds/sfx/fight.mp3');
+                                        handleFindMatch();
+                                    }}
+                                    style={{ marginTop: '20px' }}
+                                >
                                     ¡BATALLA!
                                 </button>
                                 <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '0.9rem', fontWeight: 600 }}>
@@ -1016,6 +1085,17 @@ export default function Home() {
                             <p style={{ fontSize: '1.2rem', opacity: 0.8, textAlign: 'center' }}>
                                 Searching for opponent<span className="waiting-dots"></span>
                             </p>
+                            <button
+                                className="btn-secondary"
+                                style={{ marginTop: '20px', padding: '10px 30px' }}
+                                onClick={() => {
+                                    if (socket) socket.emit('leaveQueue');
+                                    setGameState('lobby');
+                                    playSound('/sounds/sfx/click.mp3');
+                                }}
+                            >
+                                CANCELAR
+                            </button>
                         </div>
                     )}
 
@@ -1064,6 +1144,19 @@ export default function Home() {
                                         <button className="btn-secondary" onClick={handlePlayAgain}>
                                             START
                                         </button>
+                                        <button
+                                            className="btn-secondary"
+                                            style={{ background: 'rgba(255, 255, 255, 0.1)' }}
+                                            onClick={() => {
+                                                setGameState('lobby');
+                                                setRematchStatus('');
+                                                setRematchRequested(false);
+                                                if (socket) socket.emit('leaveQueue'); // Ensure clean state
+                                                playSound('/sounds/sfx/click.mp3');
+                                            }}
+                                        >
+                                            MENU
+                                        </button>
                                     </div>
 
                                     {rematchStatus && (
@@ -1075,6 +1168,25 @@ export default function Home() {
                                                     <button className="btn-secondary" onClick={() => handleRematchResponse(false)} style={{ padding: '8px 20px', fontSize: '0.9rem' }}>Decline</button>
                                                 </div>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {/* Loot Animation Overlay within card */}
+                                    {showRewardAnim && rewardData && (
+                                        <div className="reward-anim-container" style={{
+                                            marginTop: '20px',
+                                            padding: '10px',
+                                            background: rewardData.isWin ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)',
+                                            borderRadius: '10px',
+                                            border: `1px solid ${rewardData.isWin ? '#00ff00' : '#ff0000'}`,
+                                            animation: 'fadeIn 0.5s ease'
+                                        }}>
+                                            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: rewardData.isWin ? '#00ff00' : '#ff0000' }}>
+                                                {rewardData.isWin ? '+' : ''}{rewardData.amount} {rewardData.type.toUpperCase()}
+                                            </div>
+                                            <div style={{ fontSize: '3rem', marginTop: '5px' }}>
+                                                {rewardData.type === 'rp' ? '📈' : rewardData.type === 'gems' ? '💎' : '🪙'}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
