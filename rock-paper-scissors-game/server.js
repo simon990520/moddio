@@ -21,7 +21,12 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 // Game state
-const waitingPlayers = [];
+const waitingPlayers = {
+    10: [],
+    100: [],
+    500: [],
+    1000: []
+};
 const activeRooms = new Map();
 const userSockets = new Map(); // userId -> socketId (Enforce single session)
 
@@ -186,30 +191,46 @@ app.prepare().then(() => {
             }
         });
 
-        socket.on('findMatch', (data) => {
+        socket.on('findMatch', async (data) => {
             const userId = socket.userId;
             const imageUrl = data?.imageUrl;
-            console.log('[SERVER_GAME] ═══════════════════════════════════');
-            console.log('[SERVER_GAME] findMatch request from:', userId);
-            console.log('[SERVER_GAME] Data received:', JSON.stringify(data));
-            console.log('[SERVER_GAME] imageUrl extracted:', imageUrl);
-            console.log('[SERVER_GAME] imageUrl type:', typeof imageUrl);
-            console.log('[SERVER_GAME] ═══════════════════════════════════');
+            const stakeTier = data?.stakeTier || 10; // Default stake
 
-            // Check if player is already waiting
-            if (waitingPlayers.some(p => p.socketId === socket.id || p.userId === userId)) {
-                console.warn('[SERVER_GAME] Player already in queue or playing:', userId);
+            console.log('[SERVER_GAME] findMatch request:', { userId, stakeTier });
+
+            // 1. Check if user has enough coins for this tier
+            try {
+                const { data: profile, error: profileErr } = await supabase
+                    .from('profiles')
+                    .select('coins')
+                    .eq('id', userId)
+                    .single();
+
+                if (profileErr || (profile && profile.coins < stakeTier)) {
+                    socket.emit('matchError', 'No tienes suficientes monedas para entrar en esta Arena.');
+                    return;
+                }
+            } catch (err) {
+                console.error('[SERVER_GAME] Check balance error:', err.message);
+            }
+
+            // Check if player is already waiting in ANY tier
+            const isWaiting = Object.values(waitingPlayers).some(queue =>
+                queue.some(p => p.socketId === socket.id || p.userId === userId)
+            );
+
+            if (isWaiting) {
+                console.warn('[SERVER_GAME] Player already in queue:', userId);
                 return;
             }
 
-            // Check if player was in a finished game (leaving for new match)
+            // Check if player was in a finished game
             if (activeRooms.has(socket.id)) {
                 const room = activeRooms.get(socket.id);
                 if (room.state === 'gameOver') {
                     const opponent = room.players.find(p => p.socketId !== socket.id);
                     if (opponent) {
                         io.to(opponent.socketId).emit('opponentLeft');
-                        // Clean up room references for the opponent so they're free to match too
                         activeRooms.delete(opponent.socketId);
                     }
                     activeRooms.delete(socket.id);
@@ -217,51 +238,55 @@ app.prepare().then(() => {
             }
 
             const player = createPlayer(socket.id, userId, imageUrl);
-            console.log('[SERVER_GAME] Created player object for:', userId, 'with image:', !!imageUrl);
+            player.stakeTier = stakeTier;
 
-            // If someone is waiting, match them
-            if (waitingPlayers.length > 0) {
-                const opponent = waitingPlayers.shift();
-                console.log('[SERVER_GAME] MATCH FOUND! Matching with opponent:', opponent.socketId, 'Image:', !!opponent.imageUrl);
+            // If someone is waiting in THIS tier, match them
+            if (waitingPlayers[stakeTier] && waitingPlayers[stakeTier].length > 0) {
+                const opponent = waitingPlayers[stakeTier].shift();
+                console.log(`[SERVER_GAME] MATCH FOUND in tier ${stakeTier}!`);
                 const room = createRoom(player, opponent);
+                room.stakeTier = stakeTier;
 
                 activeRooms.set(socket.id, room);
                 activeRooms.set(opponent.socketId, room);
-
-                // Join socket room
                 socket.join(room.id);
                 io.sockets.sockets.get(opponent.socketId)?.join(room.id);
 
-                console.log('[SERVER_GAME] Unified Room joined:', room.id);
+                // DEDUCT COINS from both players on match start
+                const deductEntry = async (uId) => {
+                    const { data: p } = await supabase.from('profiles').select('coins').eq('id', uId).single();
+                    if (p) {
+                        await supabase.from('profiles').update({ coins: p.coins - stakeTier }).eq('id', uId);
+                    }
+                };
+                await deductEntry(player.userId);
+                await deductEntry(opponent.userId);
 
                 // Notify both players
                 const matchData0 = {
                     roomId: room.id,
                     playerIndex: 0,
                     opponentId: opponent.id,
-                    opponentImageUrl: opponent.imageUrl || null
+                    opponentImageUrl: opponent.imageUrl || null,
+                    stakeTier
                 };
-                console.log('[SERVER_GAME] Emitting matchFound to P0:', socket.id, matchData0);
                 socket.emit('matchFound', matchData0);
 
                 const matchData1 = {
                     roomId: room.id,
                     playerIndex: 1,
                     opponentId: player.id,
-                    opponentImageUrl: player.imageUrl || null
+                    opponentImageUrl: player.imageUrl || null,
+                    stakeTier
                 };
-                console.log('[SERVER_GAME] Emitting matchFound to P1:', opponent.socketId, matchData1);
                 io.to(opponent.socketId).emit('matchFound', matchData1);
 
-                // Start countdown after 1 second
-                setTimeout(() => {
-                    startCountdown(room.id);
-                }, 1000);
-
+                setTimeout(() => { startCountdown(room.id); }, 1000);
             } else {
-                // Add to waiting queue
-                waitingPlayers.push(player);
-                console.log('[SERVER_GAME] Added to queue. waitingPlayers size:', waitingPlayers.length);
+                // Add to specific tier queue
+                if (!waitingPlayers[stakeTier]) waitingPlayers[stakeTier] = [];
+                waitingPlayers[stakeTier].push(player);
+                console.log(`[SERVER_GAME] Added to queue tier ${stakeTier}. Size:`, waitingPlayers[stakeTier].length);
                 socket.emit('waiting');
             }
         });
@@ -503,6 +528,19 @@ app.prepare().then(() => {
 
             await updateStats(player1.userId, winner === 'player1');
             await updateStats(player2.userId, winner === 'player2');
+
+            // 3. Award Prize to Winner (2x stake)
+            if (room.stakeTier) {
+                const awardPrize = async (pId) => {
+                    const { data: p } = await supabase.from('profiles').select('coins').eq('id', pId).single();
+                    if (p) {
+                        const prize = room.stakeTier * 2;
+                        await supabase.from('profiles').update({ coins: p.coins + prize }).eq('id', pId);
+                        console.log(`[SERVER_ECONOMY] Awarded ${prize} coins to winner ${pId}`);
+                    }
+                };
+                await awardPrize(winner === 'player1' ? player1.userId : player2.userId);
+            }
 
             console.log('Match recorded successfully in Supabase');
         } catch (err) {

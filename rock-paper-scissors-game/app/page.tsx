@@ -90,6 +90,16 @@ export default function Home() {
     const [announcerVolume, setAnnouncerVolume] = useState<number>(0.8);
     const [showSettings, setShowSettings] = useState<boolean>(false);
 
+    // Arena Settings
+    const ARENAS = [
+        { id: 10, name: 'NOVATO', icon: '🪙', color: '#4caf50', entry: 10, prize: 20 },
+        { id: 100, name: 'AVANZADO', icon: '🔥', color: '#ff9800', entry: 100, prize: 200 },
+        { id: 500, name: 'ELITE', icon: '💎', color: '#2196f3', entry: 500, prize: 1000 },
+        { id: 1000, name: 'LEYENDA', icon: '👑', color: '#e91e63', entry: 1000, prize: 2000 }
+    ];
+    const [selectedStake, setSelectedStake] = useState(10);
+    const [currentMatchStake, setCurrentMatchStake] = useState<number | null>(null);
+
     // Audio Persistence: Load on mount
     useEffect(() => {
         const savedMusicVol = localStorage.getItem('musicVolume');
@@ -273,31 +283,30 @@ export default function Home() {
 
     const { getToken, sessionId } = useAuth();
 
+    const checkProfile = async () => {
+        if (!isSignedIn || !user) return;
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+        // If profile missing or incomplete (no username or birth_date)
+        if (error || !data || !data.username || !data.birth_date) {
+            setShowOnboarding(true);
+            if (data?.username) setUsername(data.username);
+            // Don't set birthDate if it's null
+        }
+
+        // Always update coins/gems if data exists
+        if (data) {
+            setCoins(data.coins || 0);
+            setGems(data.gems || 0);
+        }
+    };
+
     // Check Profile on Load
     useEffect(() => {
-        if (!isSignedIn || !user) return;
-
-        const checkProfile = async () => {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single();
-
-            // If profile missing or incomplete (no username or birth_date)
-            if (error || !data || !data.username || !data.birth_date) {
-                setShowOnboarding(true);
-                if (data?.username) setUsername(data.username);
-                // Don't set birthDate if it's null
-            }
-
-            // Always update coins/gems if data exists
-            if (data) {
-                setCoins(data.coins || 0);
-                setGems(data.gems || 0);
-            }
-        };
-
         checkProfile();
     }, [isSignedIn, user]);
 
@@ -374,12 +383,18 @@ export default function Home() {
                 }
             });
 
+            socketIo.on('matchError', (msg: string) => {
+                console.error('[SOCKET_INFO] Match error:', msg);
+                alert(msg);
+                setGameState('lobby');
+            });
+
             socketIo.on('waiting', () => {
                 console.log('[GAME_STATUS] Waiting in queue...');
                 setGameState('waiting');
             });
 
-            socketIo.on('matchFound', (data: { opponentImageUrl?: string }) => {
+            socketIo.on('matchFound', (data: { roomId: string, playerIndex: number, opponentId: string, opponentImageUrl?: string, stakeTier?: number }) => {
                 console.log('[GAME_STATUS] Match found! Data:', data);
                 setGameState('countdown');
                 setPlayerScore(0);
@@ -387,6 +402,11 @@ export default function Home() {
                 setRound(1);
                 setRematchRequested(false);
                 setRematchStatus('');
+                if (data.stakeTier) {
+                    setCurrentMatchStake(data.stakeTier);
+                    // Force refresh profile to show deducted coins
+                    checkProfile();
+                }
                 if (data?.opponentImageUrl) {
                     console.log('[AVATAR] Setting opponent image:', data.opponentImageUrl);
                     setOpponentImageUrl(data.opponentImageUrl);
@@ -558,12 +578,10 @@ export default function Home() {
         // User didn't specify what to do with Rankings but gave a new order.
         // I will add another button for Rankings elsewhere if needed, or put it in the modal.
 
-        console.log('[GAME_ACTION] Emitting findMatch...');
-        console.log('[DEBUG_AVATAR] Full user object:', user);
-        console.log('[DEBUG_AVATAR] user.imageUrl:', user?.imageUrl);
-        console.log('[DEBUG_AVATAR] Sending imageUrl to server:', user?.imageUrl || 'UNDEFINED/NULL');
-        playSound('/sounds/sfx/click.mp3');
-        socket.emit('findMatch', { imageUrl: user?.imageUrl });
+        socket.emit('findMatch', {
+            imageUrl: user?.imageUrl,
+            stakeTier: selectedStake
+        });
     };
 
     const handleChoice = (choice: Choice) => {
@@ -903,6 +921,11 @@ export default function Home() {
                 {/* Simplified Top Info Bar */}
                 {(gameState === 'playing' || gameState === 'roundResult' || gameState === 'gameOver') && (
                     <div className="top-info-bar" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+                        {currentMatchStake && (
+                            <div className="stake-badge">
+                                APUESTA: {currentMatchStake * 2} 🪙
+                            </div>
+                        )}
                         {gameState === 'playing' && (
                             <div className="game-status-text" style={{ fontSize: '1.5rem', fontWeight: 900 }}>ROUND {round}</div>
                         )}
@@ -953,11 +976,33 @@ export default function Home() {
                             </SignedOut>
 
                             <SignedIn>
-                                <button className="btn-primary" onClick={handleFindMatch}>
-                                    START
+                                {/* Arena Selector */}
+                                <div className="arena-selector">
+                                    <p className="arena-label">ELIGE TU ARENA</p>
+                                    <div className="arena-grid">
+                                        {ARENAS.map((arena) => (
+                                            <div
+                                                key={arena.id}
+                                                className={`arena-card ${selectedStake === arena.id ? 'active' : ''}`}
+                                                style={{ '--arena-color': arena.color } as any}
+                                                onClick={() => {
+                                                    setSelectedStake(arena.id);
+                                                    playSound('/sounds/sfx/click.mp3');
+                                                }}
+                                            >
+                                                <div className="arena-icon">{arena.icon}</div>
+                                                <div className="arena-name">{arena.name}</div>
+                                                <div className="arena-entry">{arena.entry} 🪙</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button className="btn-primary" onClick={handleFindMatch} style={{ marginTop: '20px' }}>
+                                    ¡BATALLA!
                                 </button>
-                                <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '1rem', fontWeight: 700 }}>
-                                    Welcome, {user?.firstName || 'Player'}!
+                                <p style={{ marginTop: '15px', opacity: 0.8, fontSize: '0.9rem', fontWeight: 600 }}>
+                                    Bienvenido, {user?.firstName || 'Jugador'}!
                                 </p>
                             </SignedIn>
                         </div>
