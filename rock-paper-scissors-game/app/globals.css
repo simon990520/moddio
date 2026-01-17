@@ -1449,12 +1449,98 @@ body {
 @media (max-width: 600px) {
   .arena-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
   }
 
   .arena-selector {
     padding: 0 10px;
   }
+
+  .arena-label {
+    font-size: 0.7rem;
+    margin-bottom: 12px;
+  }
+
+  .arena-card {
+    padding: 10px 3px;
+    gap: 4px;
+  }
+
+  .arena-icon {
+    font-size: 1.2rem;
+  }
+
+  .arena-name {
+    font-size: 0.6rem;
+  }
+
+  .arena-entry {
+    font-size: 0.7rem;
+  }
+
+  .mode-display-container {
+    min-height: auto !important;
+    margin-bottom: 5px;
+  }
+
+  .mode-toggle-container {
+    margin: 0 auto 10px;
+    padding: 4px;
+  }
+
+  .mode-btn {
+    padding: 6px 18px;
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+  }
+
+  .ranked-card {
+    max-width: 240px;
+    padding: 10px;
+    gap: 8px;
+    margin: 0 auto;
+  }
+
+  .ranked-badge {
+    font-size: 2rem;
+  }
+
+  .ranked-name {
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+  }
+
+  .ranked-rp {
+    font-size: 0.85rem;
+  }
+
+  .ranked-stake {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    margin-top: 5px;
+  }
+
+  .rp-progress-bg {
+    height: 6px;
+    margin-top: 6px;
+  }
+
+  .btn-primary {
+    padding: 12px 30px !important;
+    font-size: 1rem !important;
+    margin-top: 10px !important;
+  }
+}
+
+/* Mode Display Container */
+.mode-display-container {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  transition: min-height 0.3s ease;
 }
 
 /* Mode Selector */
@@ -1463,7 +1549,7 @@ body {
   background: rgba(0, 0, 0, 0.4);
   padding: 5px;
   border-radius: 30px;
-  margin: 0 auto 25px;
+  margin: 0 auto 15px;
   width: fit-content;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);

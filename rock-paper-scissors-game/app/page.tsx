@@ -429,6 +429,7 @@ export default function Home() {
                 setRound(1);
                 setRematchRequested(false);
                 setRematchStatus('');
+                playSound('/sounds/voices/announcer/mach.mp3');
 
                 if (data.stakeTier) {
                     setCurrentMatchStake(data.stakeTier);
@@ -1018,7 +1019,7 @@ export default function Home() {
                                     </button>
                                 </div>
 
-                                <div className="mode-display-container" style={{ minHeight: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                                <div className="mode-display-container">
                                     {gameMode === 'casual' ? (
                                         <div className="arena-selector">
                                             <p className="arena-label">ELIGE TU ARENA</p>
@@ -1063,7 +1064,7 @@ export default function Home() {
                                 <button
                                     className="btn-primary"
                                     onClick={() => {
-                                        playSound('/sounds/sfx/fight.mp3');
+                                        playSound('/sounds/voices/announcer/battle.mp3');
                                         handleFindMatch();
                                     }}
                                     style={{ marginTop: '20px' }}
